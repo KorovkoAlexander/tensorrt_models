@@ -34,12 +34,11 @@ public:
             const char* model_path,
             const char* input_blob,
             const std::vector<std::string>& output_blobs,
-            uint32_t maxBatchSize,
-            precisionType type);
+            uint32_t maxBatchSize);
 
     py::object Apply(py::array_t<uint8_t, py::array::c_style> image);
 
-    ~Openpose();
+    ~Openpose() override;
 };
 
 #endif //OPENPOSETENSORRT_OPENPOSE_H

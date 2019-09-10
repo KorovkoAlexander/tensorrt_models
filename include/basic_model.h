@@ -23,21 +23,6 @@ typedef nvinfer1::DimsCHW Dims3;
 #define DEFAULT_MAX_BATCH_SIZE  1
 #define LOG_TRT "[TRT]   "
 
-
-enum precisionType
-{
-    TYPE_DISABLED = 0,	/**< Unknown, unspecified, or disabled type */
-    TYPE_FASTEST,		/**< The fastest detected precision should be use (i.e. try INT8, then FP16, then FP32) */
-    TYPE_FP32,		/**< 32-bit floating-point precision (FP32) */
-    TYPE_FP16,		/**< 16-bit floating-point half precision (FP16) */
-    TYPE_INT8,		/**< 8-bit integer precision (INT8) */
-    NUM_PRECISIONS		/**< Number of precision types defined */
-};
-
-const char* precisionTypeToStr( precisionType type );
-
-precisionType precisionTypeFromStr( const char* str );
-
 enum deviceType
 {
     DEVICE_GPU = 0,			/**< GPU (if multiple GPUs are present, a specific GPU can be selected with cudaSetDevice() */
@@ -46,10 +31,6 @@ enum deviceType
     DEVICE_DLA_1,				/**< Deep Learning Accelerator (DLA) Core 1 (only on Jetson Xavier) */
     NUM_DEVICES				/**< Number of device types defined */
 };
-
-const char* deviceTypeToStr( deviceType type );
-
-deviceType deviceTypeFromStr( const char* str );
 
 struct outputLayer
 {
@@ -70,7 +51,7 @@ public:
 
     bool LoadNetwork( const char* model,
                       const char* input_blob="data", const char* output_blob="prob",
-                      uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE, precisionType precision=TYPE_FASTEST,
+                      uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
                       deviceType device=DEVICE_GPU, bool allowGPUFallback=true,
                       cudaStream_t stream=NULL);
 
@@ -78,7 +59,6 @@ public:
                       const char* input_blob,
                       const std::vector<std::string>& output_blobs,
                       uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
-                      precisionType precision=TYPE_FASTEST,
                       deviceType device=DEVICE_GPU,
                       bool allowGPUFallback=true,
                       cudaStream_t stream=NULL);
@@ -88,7 +68,6 @@ public:
                       const Dims3& input_dims,
                       const std::vector<std::string>& output_blobs,
                       uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
-                      precisionType precision=TYPE_FASTEST,
                       deviceType device=DEVICE_GPU,
                       bool allowGPUFallback=true,
                       cudaStream_t stream=NULL);
@@ -98,18 +77,6 @@ public:
     inline deviceType GetDevice() const	{ return mDevice; }
 
     inline outputLayer get_output(const int& n) const { return mOutputs[n];}
-
-    inline precisionType GetPrecision() const { return mPrecision; }
-
-    inline bool IsPrecision( precisionType type ) const	{ return (mPrecision == type); }
-
-    static precisionType FindFastestPrecision( deviceType device=DEVICE_GPU, bool allowInt8=true );
-
-    static std::vector<precisionType> DetectNativePrecisions( deviceType device=DEVICE_GPU );
-
-    static bool DetectNativePrecision( const std::vector<precisionType>& nativeTypes, precisionType type );
-
-    static bool DetectNativePrecision( precisionType precision, deviceType device=DEVICE_GPU );
 
     inline cudaStream_t GetStream() const { return mStream; }
 
@@ -141,7 +108,6 @@ protected:
     std::string mCacheEnginePath;
 
     deviceType    mDevice;
-    precisionType mPrecision;
     cudaStream_t  mStream;
 
     nvinfer1::IRuntime* mInfer;

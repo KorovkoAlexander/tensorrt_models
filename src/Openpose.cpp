@@ -9,10 +9,9 @@ Openpose::Openpose(
         const char* model_path,
         const char* input_blob,
         const std::vector<std::string>& output_blobs,
-        uint32_t maxBatchSize,
-        precisionType type)
+        uint32_t maxBatchSize)
 {
-    bool res = LoadNetwork(model_path, input_blob, output_blobs, maxBatchSize, type);
+    bool res = LoadNetwork(model_path, input_blob, output_blobs, maxBatchSize);
     if (!res)
         throw runtime_error("Fuck! Failed to load the model :(");
 
@@ -94,23 +93,14 @@ py::object Openpose::Apply(py::array_t<uint8_t, py::array::c_style> image)
 }
 
 PYBIND11_MODULE(OpenposeTensorRT, m){
-    py::enum_<precisionType>(m, "precisionType")
-            .value("TYPE_INT8", precisionType::TYPE_INT8)
-            .value("TYPE_FP16", precisionType::TYPE_FP16)
-            .value("TYPE_FP32", precisionType::TYPE_FP32)
-            .value("TYPE_FASTEST", precisionType::TYPE_FASTEST)
-            .value("TYPE_DISABLED", precisionType::TYPE_DISABLED)
-            .export_values();
-
     py::class_<Openpose>(m, "Openpose")
             .def(py::init([](
                     string model_path,
                     string input_blob,
                     vector<string>& output_blobs,
-                    uint32_t max_batch_size,
-                    precisionType type
+                    uint32_t max_batch_size
             ){
-                return new Openpose(model_path.c_str(), input_blob.c_str(), output_blobs, max_batch_size, type);
+                return new Openpose(model_path.c_str(), input_blob.c_str(), output_blobs, max_batch_size);
             }))
             .def("apply", &Openpose::Apply);
 }

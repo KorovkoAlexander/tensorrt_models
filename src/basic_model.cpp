@@ -12,48 +12,7 @@
 #include <fstream>
 #include <map>
 
-#define CREATE_INFER_BUILDER nvinfer1::createInferBuilder
 #define CREATE_INFER_RUNTIME nvinfer1::createInferRuntime
-
-
-const char* precisionTypeToStr( precisionType type )
-{
-    switch(type)
-    {
-        case TYPE_DISABLED:	return "DISABLED";
-        case TYPE_FASTEST:	return "FASTEST";
-        case TYPE_FP32:	return "FP32";
-        case TYPE_FP16:	return "FP16";
-        case TYPE_INT8:	return "INT8";
-    }
-}
-
-precisionType precisionTypeFromStr( const char* str )
-{
-    if( !str )
-        return TYPE_DISABLED;
-
-    for( int n=0; n < NUM_PRECISIONS; n++ )
-    {
-        if( strcasecmp(str, precisionTypeToStr((precisionType)n)) == 0 )
-            return (precisionType)n;
-    }
-
-    return TYPE_DISABLED;
-}
-
-static inline nvinfer1::DataType precisionTypeToTRT( precisionType type )
-{
-    switch(type)
-    {
-        case TYPE_FP16:	return nvinfer1::DataType::kHALF;
-#if NV_TENSORRT_MAJOR >= 4
-        case TYPE_INT8:	return nvinfer1::DataType::kINT8;
-#endif
-    }
-
-    return nvinfer1::DataType::kFLOAT;
-}
 
 static inline bool isFp16Enabled( nvinfer1::IBuilder* builder )
 {
@@ -119,33 +78,6 @@ static inline nvinfer1::Dims validateDims( const nvinfer1::Dims& dims )
 }
 #endif
 
-const char* deviceTypeToStr( deviceType type )
-{
-    switch(type)
-    {
-        case DEVICE_GPU:	return "GPU";
-        case DEVICE_DLA_0:	return "DLA_0";
-        case DEVICE_DLA_1:	return "DLA_1";
-    }
-}
-
-deviceType deviceTypeFromStr( const char* str )
-{
-    if( !str )
-        return DEVICE_GPU;
-
-    for( int n=0; n < NUM_DEVICES; n++ )
-    {
-        if( strcasecmp(str, deviceTypeToStr((deviceType)n)) == 0 )
-            return (deviceType)n;
-    }
-
-    if( strcasecmp(str, "DLA") == 0 )
-        return DEVICE_DLA;
-
-    return DEVICE_GPU;
-}
-
 bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgHeight){
     if( !img )
         return false;
@@ -165,19 +97,18 @@ bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgH
 
     for( int y=0; y < imgHeight; y++ )
     {
-        const size_t yOffset = y * imgWidth * imgChannels;
+        const size_t yOffset = y * imgWidth * imgChannels * sizeof(uint8_t);
 
         for( int x=0; x < imgWidth; x++ )
         {
             #define GET_PIXEL(channel)	    float(img[offset + channel])
             #define SET_PIXEL_FLOAT3(r,g,b) cpuPtr[y*imgWidth+x] = make_float3(r,g,b)
 
-            const size_t offset = yOffset + x * imgChannels;
+            const size_t offset = yOffset + x * imgChannels * sizeof(uint8_t);
             SET_PIXEL_FLOAT3(GET_PIXEL(0), GET_PIXEL(1), GET_PIXEL(2));
+
         }
     }
-
-//    free(img);
     return true;
 }
 
@@ -217,7 +148,6 @@ BasicModel::BasicModel()
     mInputCPU       = nullptr;
     mInputCUDA      = nullptr;
 
-    mPrecision 	   = TYPE_FASTEST;
     mDevice    	   = DEVICE_GPU;
     mAllowGPUFallback = false;
 }
@@ -245,103 +175,11 @@ BasicModel::~BasicModel(){
 }
 
 
-// DetectNativePrecisions()
-std::vector<precisionType> BasicModel::DetectNativePrecisions( deviceType device )
-{
-    std::vector<precisionType> types;
-    Logger logger;
-
-    // create a temporary builder for querying the supported types
-    nvinfer1::IBuilder* builder = CREATE_INFER_BUILDER(logger);
-
-    if( !builder )
-    {
-        printf(LOG_TRT "QueryNativePrecisions() failed to create TensorRT IBuilder instance\n");
-        return types;
-    }
-
-#if NV_TENSORRT_MAJOR >= 5
-    if( device == DEVICE_DLA_0 || device == DEVICE_DLA_1 )
-        builder->setFp16Mode(true);
-
-    builder->setDefaultDeviceType( deviceTypeToTRT(device) );
-#endif
-
-    // FP32 is supported on all platforms
-    types.push_back(TYPE_FP32);
-
-    // detect fast (native) FP16
-    if( builder->platformHasFastFp16() )
-        types.push_back(TYPE_FP16);
-
-#if NV_TENSORRT_MAJOR >= 4
-    // detect fast (native) INT8
-    if( builder->platformHasFastInt8() )
-        types.push_back(TYPE_INT8);
-#endif
-
-    // print out supported precisions (optional)
-    const uint32_t numTypes = types.size();
-
-    printf(LOG_TRT "native precisions detected for %s:  ", deviceTypeToStr(device));
-
-    for( uint32_t n=0; n < numTypes; n++ )
-    {
-        printf("%s", precisionTypeToStr(types[n]));
-
-        if( n < numTypes - 1 )
-            printf(", ");
-    }
-
-    printf("\n");
-    builder->destroy();
-    return types;
-}
-
-
-// DetectNativePrecision
-bool BasicModel::DetectNativePrecision( const std::vector<precisionType>& types, precisionType type )
-{
-    const uint32_t numTypes = types.size();
-
-    for( uint32_t n=0; n < numTypes; n++ )
-    {
-        if( types[n] == type )
-            return true;
-    }
-
-    return false;
-}
-
-
-// DetectNativePrecision
-bool BasicModel::DetectNativePrecision( precisionType precision, deviceType device )
-{
-    std::vector<precisionType> types = DetectNativePrecisions(device);
-    return DetectNativePrecision(types, precision);
-}
-
-
-// FindFastestPrecision
-precisionType BasicModel::FindFastestPrecision( deviceType device, bool allowInt8 )
-{
-    std::vector<precisionType> types = DetectNativePrecisions(device);
-
-    if( allowInt8 && DetectNativePrecision(types, TYPE_INT8) )
-        return TYPE_INT8;
-    else if( DetectNativePrecision(types, TYPE_FP16) )
-        return TYPE_FP16;
-    else
-        return TYPE_FP32;
-}
-
-
 // LoadNetwork
 bool BasicModel::LoadNetwork(const char* model_path,
                              const char* input_blob,
                              const char* output_blob,
                              uint32_t maxBatchSize,
-                             precisionType precision,
                              deviceType device,
                              bool allowGPUFallback,
                              cudaStream_t stream)
@@ -349,7 +187,7 @@ bool BasicModel::LoadNetwork(const char* model_path,
     std::vector<std::string> outputs;
     outputs.emplace_back(output_blob);
 
-    return LoadNetwork(model_path, input_blob, outputs, maxBatchSize, precision, device, allowGPUFallback );
+    return LoadNetwork(model_path, input_blob, outputs, maxBatchSize, device, allowGPUFallback );
 }
 
 
@@ -357,13 +195,13 @@ bool BasicModel::LoadNetwork(const char* model_path,
 bool BasicModel::LoadNetwork(const char* model_path_,
                              const char* input_blob,
                              const std::vector<std::string>& output_blobs,
-                             uint32_t maxBatchSize, precisionType precision,
+                             uint32_t maxBatchSize,
                              deviceType device, bool allowGPUFallback,
                              cudaStream_t stream)
 {
     return LoadNetwork(model_path_,
                        input_blob, Dims3(1,1,1), output_blobs,
-                       maxBatchSize, precision, device,
+                       maxBatchSize, device,
                        allowGPUFallback, stream);
 }
 
@@ -375,7 +213,6 @@ bool BasicModel::LoadNetwork(
         const Dims3& input_dims,
         const std::vector<std::string>& output_blobs,
         uint32_t maxBatchSize,
-        precisionType precision,
         deviceType device,
         bool allowGPUFallback,
         cudaStream_t stream
@@ -403,26 +240,7 @@ bool BasicModel::LoadNetwork(
         printf(LOG_TRT "completed loading NVIDIA plugins.\n");
     }
 
-
-    /*
-     * verify the prototxt and model paths
-     */
-    const std::string model_path    = model_path_;//locateFile(model_path_);
-
-    /*
-     * if the precision is left unspecified, detect the fastest
-     */
-    printf(LOG_TRT "desired precision specified for %s: %s\n", deviceTypeToStr(device), precisionTypeToStr(precision));
-
-    if( precision == TYPE_DISABLED )
-    {
-        printf(LOG_TRT "skipping network specified with precision TYPE_DISABLE\n");
-        printf(LOG_TRT "please specify a valid precision to create the network\n");
-
-        return false;
-    }
-
-
+    const std::string model_path    = model_path_;
 
     /*
      * attempt to load network from cache before profiling with tensorRT
@@ -437,26 +255,17 @@ bool BasicModel::LoadNetwork(
 
     if( !cache )
     {
-        printf(LOG_TRT "cache file not found, profiling network model on device %s\n", deviceTypeToStr(device));
+        printf(LOG_TRT "cache file not found, profiling network model on device\n");
+        return false;
     }
     else
     {
         printf(LOG_TRT "loading network profile from engine cache... %s\n", mCacheEnginePath.c_str());
         gieModelStream << cache.rdbuf();
         cache.close();
-
-        // test for half FP16 support
-        /*nvinfer1::IBuilder* builder = CREATE_INFER_BUILDER(gLogger);
-
-        if( builder != NULL )
-        {
-            mEnableFP16 = !mOverride16 && builder->platformHasFastFp16();
-            printf(LOG_TRT "platform %s fast FP16 support\n", mEnableFP16 ? "has" : "does not have");
-            builder->destroy();
-        }*/
     }
 
-    printf(LOG_TRT "device %s, %s loaded\n", deviceTypeToStr(device), model_path.c_str());
+    printf(LOG_TRT "device %s loaded\n", model_path.c_str());
 
 
     /*
@@ -466,20 +275,20 @@ bool BasicModel::LoadNetwork(
 
     if( !infer )
     {
-        printf(LOG_TRT "device %s, failed to create InferRuntime\n", deviceTypeToStr(device));
-        return 0;
+        printf(LOG_TRT "failed to create InferRuntime\n");
+        return false;
     }
 
 
     // if using DLA, set the desired core before deserialization occurs
     if( device == DEVICE_DLA_0 )
     {
-        printf(LOG_TRT "device %s, enabling DLA core 0\n", deviceTypeToStr(device));
+        printf(LOG_TRT "enabling DLA core 0\n");
         infer->setDLACore(0);
     }
     else if( device == DEVICE_DLA_1 )
     {
-        printf(LOG_TRT "device %s, enabling DLA core 1\n", deviceTypeToStr(device));
+        printf(LOG_TRT "enabling DLA core 1\n");
         infer->setDLACore(1);
     }
 
@@ -495,7 +304,7 @@ bool BasicModel::LoadNetwork(
     if( !modelMem )
     {
         printf(LOG_TRT "failed to allocate %i bytes to deserialize model\n", modelSize);
-        return 0;
+        return false;
     }
 
     gieModelStream.read((char*)modelMem, modelSize);
@@ -504,19 +313,19 @@ bool BasicModel::LoadNetwork(
 
     if( !engine )
     {
-        printf(LOG_TRT "device %s, failed to create CUDA engine\n", deviceTypeToStr(device));
-        return 0;
+        printf(LOG_TRT "failed to create CUDA engine\n");
+        return false;
     }
 
     nvinfer1::IExecutionContext* context = engine->createExecutionContext();
 
     if( !context )
     {
-        printf(LOG_TRT "device %s, failed to create execution context\n", deviceTypeToStr(device));
-        return 0;
+        printf(LOG_TRT "failed to create execution context\n");
+        return false;
     }
 
-    printf(LOG_TRT "device %s, CUDA engine context initialized with %u bindings\n", deviceTypeToStr(device), engine->getNbBindings());
+    printf(LOG_TRT "CUDA engine context initialized with %u bindings\n", engine->getNbBindings());
 
     mInfer   = infer;
     mEngine  = engine;
@@ -627,12 +436,11 @@ bool BasicModel::LoadNetwork(
 
     mModelPath        = model_path;
     mInputBlobName    = input_blob;
-    mPrecision        = precision;
     mDevice           = device;
     mAllowGPUFallback = allowGPUFallback;
 
 
-    printf("device %s, %s initialized.\n", deviceTypeToStr(device), mModelPath.c_str());
+    printf("%s initialized.\n", mModelPath.c_str());
     return true;
 }
 
