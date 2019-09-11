@@ -4,7 +4,6 @@
 
 #include "basic_model.h"
 #include "cudaMappedMemory.h"
-//#include "cudaResize.h"
 
 #include "NvInferPlugin.h"
 
