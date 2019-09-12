@@ -2,7 +2,7 @@
 // Created by alex on 04.09.19.
 // from https://github.com/dusty-nv/jetson-inference/blob/master/c/imageNet.cu
 //
-#include <OpenposeUtils.h>
+#include <Utils.h>
 //#include <iostream>
 
 __global__ void gpuPreImageNetRGB(float2 scale, float3* input, int iWidth, float* output, int oWidth, int oHeight )

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(OpenposeTensorRT)
+project(tensorrt_models)
 
 set(CMAKE_CXX_STANDARD 11)
 
@@ -19,15 +19,18 @@ include_directories(${CUDA_INCLUDE_DIRS})
 
 file(GLOB cudaSources cuda/*.cu src/*.cu)
 file(GLOB srcSources src/*.cpp)
+file(GLOB imageSources image/*.cpp)
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_SOURCE_DIR}/cuda)
+include_directories(${PROJECT_SOURCE_DIR}/image)
+include_directories(${PROJECT_SOURCE_DIR}/image/stb)
 
 add_subdirectory(pybind11)
 
-cuda_add_library(OpenposeTensorRT MODULE ${cudaSources} ${srcSources})
+cuda_add_library(tensorrt_models MODULE ${cudaSources} ${srcSources} ${imageSources})
 
-target_link_libraries(OpenposeTensorRT
+target_link_libraries(tensorrt_models
         nvinfer
         nvinfer_plugin
         nvonnxparser
@@ -35,5 +38,5 @@ target_link_libraries(OpenposeTensorRT
         ${CUDA_LIBRARIES}
         )
 
-set_target_properties(OpenposeTensorRT PROPERTIES PREFIX "${PYTHON_MODULE_PREFIX}"
+set_target_properties(tensorrt_models PROPERTIES PREFIX "${PYTHON_MODULE_PREFIX}"
         SUFFIX "${PYTHON_MODULE_EXTENSION}")

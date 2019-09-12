@@ -5,13 +5,27 @@
 #include "basic_model.h"
 #include "cudaMappedMemory.h"
 
+#include "NvOnnxParser.h"
+#include "NvUffParser.h"
 #include "NvInferPlugin.h"
+
+#include <EntropyCalibrator.h>
 
 #include <iostream>
 #include <fstream>
 #include <map>
 
+#define CREATE_INFER_BUILDER nvinfer1::createInferBuilder
 #define CREATE_INFER_RUNTIME nvinfer1::createInferRuntime
+
+class Logger : public nvinfer1::ILogger
+{
+    void log( Severity severity, const char* msg ) override
+    {
+        if( severity != Severity::kINFO /*|| mEnableDebug*/ )
+            printf(LOG_TRT "%s\n", msg);
+    }
+} gLogger;
 
 static inline bool isFp16Enabled( nvinfer1::IBuilder* builder )
 {
@@ -42,8 +56,6 @@ static inline const char* dataTypeToStr( nvinfer1::DataType type )
         case nvinfer1::DataType::kINT32:	return "INT32";
     }
 
-    printf(LOG_TRT "warning -- unknown nvinfer1::DataType (%i)\n", (int)type);
-    return "UNKNOWN";
 }
 
 static inline const char* dimensionTypeToStr( nvinfer1::DimensionType type )
@@ -56,8 +68,6 @@ static inline const char* dimensionTypeToStr( nvinfer1::DimensionType type )
         case nvinfer1::DimensionType::kSEQUENCE: return "SEQUENCE";
     }
 
-    printf(LOG_TRT "warning -- unknown nvinfer1::DimensionType (%i)\n", (int)type);
-    return "UNKNOWN";
 }
 #endif
 
@@ -469,4 +479,216 @@ void BasicModel::SetStream( cudaStream_t stream )
 
     if( !mStream )
         return;
+}
+
+
+
+bool DetectNativePrecision( const std::vector<precisionType>& types, precisionType type )
+{
+    const uint32_t numTypes = types.size();
+
+    for( uint32_t n=0; n < numTypes; n++ )
+    {
+        if( types[n] == type )
+            return true;
+    }
+
+    return false;
+}
+
+const char* precisionTypeToStr( precisionType type )
+{
+    switch(type)
+    {
+        case TYPE_DISABLED:	return "DISABLED";
+        case TYPE_FASTEST:	return "FASTEST";
+        case TYPE_FP32:	return "FP32";
+        case TYPE_FP16:	return "FP16";
+        case TYPE_INT8:	return "INT8";
+    }
+}
+
+std::vector<precisionType> DetectNativePrecisions( deviceType device )
+{
+    std::vector<precisionType> types;
+    Logger logger;
+
+    // create a temporary builder for querying the supported types
+    nvinfer1::IBuilder* builder = CREATE_INFER_BUILDER(logger);
+
+    if( !builder )
+    {
+        printf(LOG_TRT "QueryNativePrecisions() failed to create TensorRT IBuilder instance\n");
+        return types;
+    }
+
+    if( device == DEVICE_DLA_0 || device == DEVICE_DLA_1 )
+        builder->setFp16Mode(true);
+
+    builder->setDefaultDeviceType( deviceTypeToTRT(device) );
+
+    // FP32 is supported on all platforms
+    types.push_back(TYPE_FP32);
+
+    // detect fast (native) FP16
+    if( builder->platformHasFastFp16() )
+        types.push_back(TYPE_FP16);
+
+    if( builder->platformHasFastInt8() )
+        types.push_back(TYPE_INT8);
+
+    // print out supported precisions (optional)
+    const uint32_t numTypes = types.size();
+
+    for( uint32_t n=0; n < numTypes; n++ )
+    {
+        printf("%s", precisionTypeToStr(types[n]));
+
+        if( n < numTypes - 1 )
+            printf(", ");
+    }
+
+    printf("\n");
+    builder->destroy();
+    return types;
+}
+
+// FindFastestPrecision
+precisionType FindFastestPrecision( deviceType device, bool allowInt8 )
+{
+    std::vector<precisionType> types = DetectNativePrecisions(device);
+
+    if( allowInt8 && DetectNativePrecision(types, TYPE_INT8) )
+        return TYPE_INT8;
+    else if( DetectNativePrecision(types, TYPE_FP16) )
+        return TYPE_FP16;
+    else
+        return TYPE_FP32;
+}
+
+bool convertONNX(const std::string& modelFile, // name for model
+                 const std::string& file_list,
+                 unsigned int maxBatchSize,			   // batch size - NB must be at least as large as the batch we want to run with
+                 bool allowGPUFallback,
+                 deviceType device,
+                 precisionType precision)			   // output stream for the GIE model
+{
+    // create API root class - must span the lifetime of the engine usage
+    nvinfer1::IBuilder* builder = CREATE_INFER_BUILDER(gLogger);
+    nvinfer1::INetworkDefinition* network = builder->createNetwork();
+
+    builder->setMinFindIterations(3);	// allow time for TX1 GPU to spin up
+    builder->setAverageFindIterations(2);
+
+    printf(LOG_TRT "loading %s\n", modelFile.c_str());
+
+
+    nvonnxparser::IParser* parser = nvonnxparser::createParser(*network, gLogger);
+
+    if( !parser )
+    {
+        printf(LOG_TRT "failed to create nvonnxparser::IParser instance\n");
+        return false;
+    }
+
+    if( !parser->parseFromFile(modelFile.c_str(), (int)nvinfer1::ILogger::Severity::kWARNING) )
+    {
+        printf(LOG_TRT "failed to parse ONNX model '%s'\n", modelFile.c_str());
+        return false;
+    }
+
+    // extract the dimensions of the network input blobs
+    nvinfer1::Dims3 inputDimensions = static_cast<nvinfer1::Dims3&&>(network->getInput(0)->getDimensions());
+
+
+    // build the engine
+    printf(LOG_TRT "configuring CUDA engine\n");
+
+    builder->setMaxBatchSize(maxBatchSize);
+    builder->setMaxWorkspaceSize(16 << 20);
+
+
+    // set up the builder for the desired precision
+    if (precision == TYPE_FASTEST){
+        if(!file_list.empty())
+            precision = FindFastestPrecision(device, true);
+        else
+            precision = FindFastestPrecision(device, false);
+    }
+
+    if( precision == TYPE_INT8)
+    {
+        builder->setInt8Mode(true);
+
+        int batch_size = 1;
+        int imgWidth = DIMS_W(inputDimensions);
+        int imgHeight = DIMS_H(inputDimensions);
+        int imgChannels = DIMS_C(inputDimensions);
+
+        nvinfer1::IInt8Calibrator* calibrator= new EntropyCalibrator(file_list, batch_size, imgWidth, imgHeight, imgChannels, false);
+
+        builder->setInt8Calibrator(calibrator);
+    }
+    else if( precision == TYPE_FP16 )
+    {
+        builder->setFp16Mode(true);
+    }
+
+
+    // set the default device type
+    builder->setDefaultDeviceType(deviceTypeToTRT(device));
+
+    if( allowGPUFallback )
+        builder->allowGPUFallback(true);
+
+#if !(NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR == 0 && NV_TENSORRT_PATCH == 0)
+    if( device == DEVICE_DLA_0 )
+        builder->setDLACore(0);
+    else if( device == DEVICE_DLA_1 )
+        builder->setDLACore(1);
+#endif
+
+
+    // build CUDA engine
+    printf(LOG_TRT "building FP16:  %s\n", isFp16Enabled(builder) ? "ON" : "OFF");
+    printf(LOG_TRT "building INT8:  %s\n", isInt8Enabled(builder) ? "ON" : "OFF");
+    printf(LOG_TRT "building CUDA engine (this may take a few minutes the first time a network is loaded)\n");
+
+    nvinfer1::ICudaEngine* engine = builder->buildCudaEngine(*network);
+
+    if( !engine )
+    {
+        printf(LOG_TRT "failed to build CUDA engine\n");
+        return false;
+    }
+
+    printf(LOG_TRT "completed building CUDA engine\n");
+
+    // we don't need the network definition any more, and we can destroy the parser
+    network->destroy();
+    //parser->destroy();
+
+    nvinfer1::IHostMemory* serMem = engine->serialize();
+
+    if( !serMem )
+    {
+        printf(LOG_TRT "failed to serialize CUDA engine\n");
+        return false;
+    }
+
+    std::string outFile;
+    std::getline(std::stringstream(modelFile), outFile, '.');
+    std::cout << outFile + "_1.engine" << std::endl;
+
+    std::ofstream gieModelStream(outFile + "_1.engine");
+//    gieModelStream.seekg(0, gieModelStream.beg);
+    gieModelStream.write((const char*)serMem->data(), serMem->size());
+
+    engine->destroy();
+    builder->destroy();
+
+
+
+
+    return true;
 }

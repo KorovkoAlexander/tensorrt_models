@@ -3,8 +3,8 @@
 // based on https://github.com/dusty-nv/jetson-inference/blob/e12e6e64365fed83e255800382e593bf7e1b1b1a/tensorNet.cpp
 //
 
-#ifndef OPENPOSETENSORRT_BASIC_MODEL_H
-#define OPENPOSETENSORRT_BASIC_MODEL_H
+#ifndef BASIC_MODEL_H
+#define BASIC_MODEL_H
 
 #include <NvInfer.h>
 
@@ -32,6 +32,16 @@ enum deviceType
     NUM_DEVICES				/**< Number of device types defined */
 };
 
+enum precisionType
+{
+    TYPE_DISABLED = 0,	/**< Unknown, unspecified, or disabled type */
+    TYPE_FASTEST,		/**< The fastest detected precision should be use (i.e. try INT8, then FP16, then FP32) */
+    TYPE_FP32,		/**< 32-bit floating-point precision (FP32) */
+    TYPE_FP16,		/**< 16-bit floating-point half precision (FP16) */
+    TYPE_INT8,		/**< 8-bit integer precision (INT8) */
+    NUM_PRECISIONS		/**< Number of precision types defined */
+};
+
 struct outputLayer
 {
     std::string name;
@@ -43,6 +53,21 @@ struct outputLayer
 
 bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgHeight);
 
+bool DetectNativePrecision( const std::vector<precisionType>& types, precisionType type );
+
+const char* precisionTypeToStr( precisionType type );
+
+std::vector<precisionType> DetectNativePrecisions( deviceType device );
+
+precisionType FindFastestPrecision( deviceType device, bool allowInt8 );
+
+bool convertONNX(const std::string& modelFile, // name for model
+                 const std::string& file_list,
+                 unsigned int maxBatchSize,			   // batch size - NB must be at least as large as the batch we want to run with
+                 bool allowGPUFallback,
+                 deviceType device = DEVICE_GPU,
+                 precisionType precision = TYPE_FP32);
+
 
 class BasicModel
 {
@@ -53,7 +78,7 @@ public:
                       const char* input_blob="data", const char* output_blob="prob",
                       uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
                       deviceType device=DEVICE_GPU, bool allowGPUFallback=true,
-                      cudaStream_t stream=NULL);
+                      cudaStream_t stream=nullptr);
 
     bool LoadNetwork( const char* model,
                       const char* input_blob,
@@ -61,7 +86,7 @@ public:
                       uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
                       deviceType device=DEVICE_GPU,
                       bool allowGPUFallback=true,
-                      cudaStream_t stream=NULL);
+                      cudaStream_t stream=nullptr);
 
     bool LoadNetwork( const char* model,
                       const char* input_blob,
@@ -70,7 +95,7 @@ public:
                       uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
                       deviceType device=DEVICE_GPU,
                       bool allowGPUFallback=true,
-                      cudaStream_t stream=NULL);
+                      cudaStream_t stream=nullptr);
 
     inline bool AllowGPUFallback() const { return mAllowGPUFallback; }
 
@@ -89,16 +114,6 @@ public:
 protected:
 
     BasicModel();
-
-    class Logger : public nvinfer1::ILogger
-    {
-        void log( Severity severity, const char* msg ) override
-        {
-            if( severity != Severity::kINFO /*|| mEnableDebug*/ )
-                printf(LOG_TRT "%s\n", msg);
-        }
-    } gLogger;
-
 
 protected:
 
@@ -127,4 +142,4 @@ protected:
     std::vector<outputLayer> mOutputs;
 };
 
-#endif //OPENPOSETENSORRT_BASIC_MODEL_H
+#endif //BASIC_MODEL_H

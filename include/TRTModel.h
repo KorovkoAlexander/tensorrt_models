@@ -2,12 +2,12 @@
 // Created by alex on 04.09.19.
 //
 
-#ifndef OPENPOSETENSORRT_OPENPOSE_H
-#define OPENPOSETENSORRT_OPENPOSE_H
+#ifndef TRTMODEL_H
+#define TRTMODEL_H
 
 
 #include "basic_model.h"
-#include <OpenposeUtils.h>
+#include <Utils.h>
 #include <iostream>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
@@ -15,22 +15,17 @@
 namespace py = pybind11;
 
 using namespace std;
-#define OUTPUT_HEATMAP  1
-#define OUTPUT_PAF 0
 
 
-
-class Openpose: public BasicModel {
+class TRTModel: public BasicModel {
 protected:
     float* imgCPU    = nullptr;
     float* imgCUDA  = nullptr;
 private:
-    const int imgWidth  = 1024;
-    const int imgHeight = 576;
-    const size_t imgSize = imgWidth * imgHeight * sizeof(float) * 3;
+    size_t imgSize = 0;
 
 public:
-    Openpose(
+    TRTModel(
             const char* model_path,
             const char* input_blob,
             const std::vector<std::string>& output_blobs,
@@ -38,7 +33,7 @@ public:
 
     py::object Apply(py::array_t<uint8_t, py::array::c_style> image);
 
-    ~Openpose() override;
+    ~TRTModel() override;
 };
 
-#endif //OPENPOSETENSORRT_OPENPOSE_H
+#endif //TRTMODEL_H

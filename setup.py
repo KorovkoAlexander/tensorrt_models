@@ -57,13 +57,13 @@ class CMakeBuild(build_ext):
         subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
 
 setup(
-    name='OpenposeTRT',
+    name='tensorrt_models',
     version='0.0.1',
     author='Alex Korovko',
     author_email='1a2w3d4r@mail.ru',
     description='Openpose model with pybind11 and tensorrt',
     long_description='',
-    ext_modules=[CMakeExtension('OpenposeTRT')],
+    ext_modules=[CMakeExtension('tensorrt_models')],
     cmdclass=dict(build_ext=CMakeBuild),
     zip_safe=False,
 )
