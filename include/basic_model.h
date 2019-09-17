@@ -10,6 +10,8 @@
 
 #include <cudaUtility.h>
 #include <vector>
+#include <map>
+#include <string>
 #include <sstream>
 #include <math.h>
 
@@ -110,6 +112,9 @@ public:
     void SetStream( cudaStream_t stream );
 
     inline const char* GetModelPath() const	{ return mModelPath.c_str(); }
+
+    inline std::map<std::string, uint32_t > getInputDims() const {return {{"width", mWidth}, {"height", mHeight}};};
+    std::vector<std::map<std::string, uint32_t >> getOutputDims() const;
 
 protected:
 

@@ -131,5 +131,7 @@ PYBIND11_MODULE(tensorrt_models, m){
             ){
                 return new TRTModel(model_path.c_str(), input_blob.c_str(), output_blobs, max_batch_size);
             }))
-            .def("apply", &TRTModel::Apply);
+            .def("apply", &TRTModel::Apply)
+            .def_property_readonly("input_dims", &TRTModel::getInputDims)
+            .def_property_readonly("output_dims", &TRTModel::getOutputDims);
 }

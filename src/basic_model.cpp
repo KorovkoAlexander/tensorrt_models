@@ -140,6 +140,20 @@ static inline nvinfer1::DeviceType deviceTypeToTRT( deviceType type )
 }
 #endif
 
+std::vector<std::map<std::string, uint32_t >> BasicModel::getOutputDims() const{
+    std::vector<std::map<std::string, uint32_t >> out;
+    out.reserve(mOutputs.size());
+    for(const auto& x: mOutputs){
+        out.push_back(
+                {
+                    {"width", DIMS_W(x.dims)},
+                    {"height", DIMS_H(x.dims)},
+                    {"channels", DIMS_C(x.dims)}
+                });
+    }
+    return out;
+}
+
 //---------------------------------------------------------------------
 
 // constructor
