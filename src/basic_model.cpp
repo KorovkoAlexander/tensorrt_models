@@ -110,8 +110,8 @@ bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgH
 
         for( int x=0; x < imgWidth; x++ )
         {
-            #define GET_PIXEL(channel)	    float(img[offset + channel])
-            #define SET_PIXEL_FLOAT3(r,g,b) cpuPtr[y*imgWidth+x] = make_float3(r,g,b)
+#define GET_PIXEL(channel)	    float(img[offset + channel])
+#define SET_PIXEL_FLOAT3(r,g,b) cpuPtr[y*imgWidth+x] = make_float3(r,g,b)
 
             const size_t offset = yOffset + x * imgChannels * sizeof(uint8_t);
             SET_PIXEL_FLOAT3(GET_PIXEL(0), GET_PIXEL(1), GET_PIXEL(2));
@@ -146,9 +146,9 @@ std::vector<std::map<std::string, uint32_t >> BasicModel::getOutputDims() const{
     for(const auto& x: mOutputs){
         out.push_back(
                 {
-                    {"width", DIMS_W(x.dims)},
-                    {"height", DIMS_H(x.dims)},
-                    {"channels", DIMS_C(x.dims)}
+                        {"width", DIMS_W(x.dims)},
+                        {"height", DIMS_H(x.dims)},
+                        {"channels", DIMS_C(x.dims)}
                 });
     }
     return out;
@@ -178,22 +178,22 @@ BasicModel::BasicModel()
 
 // Destructor
 BasicModel::~BasicModel(){
-        mContext->destroy();
-        mEngine->destroy();
-        mInfer->destroy();
+    mContext->destroy();
+    mEngine->destroy();
+    mInfer->destroy();
 
 
-        if(!cudaDeallocMapped((void**)mInputCPU)){
-            std::cerr << "Cant deallocate mInputCPU in dtor!" << std::endl;
+    if(!cudaDeallocMapped((void**)mInputCPU)){
+        std::cerr << "Cant deallocate mInputCPU in dtor!" << std::endl;
+    }
+    for(auto& x : mOutputs){
+        if(!cudaDeallocMapped((void**)x.CPU)){
+            std::cerr << "Cant deallocate mOutputs in dtor!" << std::endl;
         }
-        for(auto& x : mOutputs){
-            if(!cudaDeallocMapped((void**)x.CPU)){
-                std::cerr << "Cant deallocate mOutputs in dtor!" << std::endl;
-            }
-        }
-        if(CUDA_FAILED(cudaDeviceReset())){
-            std::cerr << "Cant reset the device in dtor!" << std::endl;
-        }
+    }
+    if(CUDA_FAILED(cudaDeviceReset())){
+        std::cerr << "Cant reset the device in dtor!" << std::endl;
+    }
 
 }
 
@@ -239,7 +239,7 @@ bool BasicModel::LoadNetwork(
         deviceType device,
         bool allowGPUFallback,
         cudaStream_t stream
-        )
+)
 {
     if(!model_path_ )
         return false;
@@ -260,7 +260,7 @@ bool BasicModel::LoadNetwork(
         if( !loadedPlugins )
             printf(LOG_TRT "failed to load NVIDIA plugins\n");
         else
-        printf(LOG_TRT "completed loading NVIDIA plugins.\n");
+            printf(LOG_TRT "completed loading NVIDIA plugins.\n");
     }
 
     const std::string model_path    = model_path_;
@@ -268,27 +268,17 @@ bool BasicModel::LoadNetwork(
     /*
      * attempt to load network from cache before profiling with tensorRT
      */
-    std::stringstream gieModelStream;
-    gieModelStream.seekg(0, gieModelStream.beg);
 
     mCacheEnginePath = model_path;
     printf(LOG_TRT "attempting to open engine cache file %s\n", mCacheEnginePath.c_str());
 
-    std::ifstream cache( mCacheEnginePath );
+    std::ifstream cache(model_path, std::ios::binary);
 
     if( !cache )
     {
         printf(LOG_TRT "cache file not found, profiling network model on device\n");
         return false;
     }
-    else
-    {
-        printf(LOG_TRT "loading network profile from engine cache... %s\n", mCacheEnginePath.c_str());
-        gieModelStream << cache.rdbuf();
-        cache.close();
-    }
-
-    printf(LOG_TRT "device %s loaded\n", model_path.c_str());
 
 
     /*
@@ -315,23 +305,23 @@ bool BasicModel::LoadNetwork(
         infer->setDLACore(1);
     }
 
+    cache.seekg(0, cache.end);
+    const int length = cache.tellg();
+    cache.seekg(0, cache.beg);
 
-    // support for stringstream deserialization was deprecated in TensorRT v2
-    // instead, read the stringstream into a memory buffer and pass that to TRT.
-    gieModelStream.seekg(0, std::ios::end);
-    const int modelSize = gieModelStream.tellg();
-    gieModelStream.seekg(0, std::ios::beg);
-
-    void* modelMem = malloc(modelSize);
+    void* modelMem = malloc(length);
 
     if( !modelMem )
     {
-        printf(LOG_TRT "failed to allocate %i bytes to deserialize model\n", modelSize);
+        printf(LOG_TRT "failed to allocate %i bytes to deserialize model\n", length);
         return false;
     }
 
-    gieModelStream.read((char*)modelMem, modelSize);
-    nvinfer1::ICudaEngine* engine = infer->deserializeCudaEngine(modelMem, modelSize, nullptr);
+    cache.read((char*)modelMem, length);
+    cache.close();
+    printf(LOG_TRT "device %s loaded\n", model_path.c_str());
+
+    nvinfer1::ICudaEngine* engine = infer->deserializeCudaEngine(modelMem, length, nullptr);
     free(modelMem);
 
     if( !engine )
@@ -389,12 +379,12 @@ bool BasicModel::LoadNetwork(
 
     size_t inputSize = maxBatchSize * DIMS_C(inputDims) * DIMS_H(inputDims) * DIMS_W(inputDims) * sizeof(float);
     printf(LOG_TRT "binding to input 0 %s  dims (b=%u c=%u h=%u w=%u) size=%zu\n",
-            input_blob,
-            maxBatchSize,
-            DIMS_C(inputDims),
-            DIMS_H(inputDims),
-            DIMS_W(inputDims),
-            inputSize);
+           input_blob,
+           maxBatchSize,
+           DIMS_C(inputDims),
+           DIMS_H(inputDims),
+           DIMS_W(inputDims),
+           inputSize);
 
 
     /*
@@ -680,7 +670,6 @@ bool convertONNX(const std::string& modelFile, // name for model
 
     // we don't need the network definition any more, and we can destroy the parser
     network->destroy();
-    //parser->destroy();
 
     nvinfer1::IHostMemory* serMem = engine->serialize();
 
@@ -694,9 +683,10 @@ bool convertONNX(const std::string& modelFile, // name for model
     std::getline(std::stringstream(modelFile), outFile, '.');
     std::cout << outFile + "_1.engine" << std::endl;
 
-    std::ofstream gieModelStream(outFile + "_1.engine");
-//    gieModelStream.seekg(0, gieModelStream.beg);
-    gieModelStream.write((const char*)serMem->data(), serMem->size());
+    std::fstream os(outFile + "_1.engine", std::ios::out | std::ios::binary);
+    os.write((const char*)serMem->data(), serMem->size());
+    os.close();
+
 
     engine->destroy();
     builder->destroy();

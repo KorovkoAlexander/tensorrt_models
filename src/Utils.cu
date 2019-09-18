@@ -22,9 +22,9 @@ __global__ void gpuPreImageNetRGB(float2 scale, float3* input, int iWidth, float
     const float3 px  = input[ dy * iWidth + dx ];
 //    const float3 rgb = make_float3(px.x, px.y, px.z);
 
-    output[n * 0 + m] = px.x/256.0 - 0.5;
-    output[n * 1 + m] = px.y/256.0 - 0.5;
-    output[n * 2 + m] = px.z/256.0 - 0.5;
+    output[n * 0 + m] = px.x;
+    output[n * 1 + m] = px.y;
+    output[n * 2 + m] = px.z;
 }
 
 
