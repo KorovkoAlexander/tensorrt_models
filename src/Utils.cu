@@ -53,6 +53,58 @@ cudaError_t cudaPreImageNetRGB( float3* input, size_t inputWidth, size_t inputHe
     return CUDA(cudaGetLastError());
 }
 
+__global__ void gpuPreImageNetScaleShiftRGB(
+        float2 scale, float3* input,
+        int iWidth, float* output,
+        int oWidth, int oHeight,
+        float3 _scale, float3 _shift
+        ){
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if( x >= oWidth || y >= oHeight )
+        return;
+
+    const int n = oWidth * oHeight;
+    const int m = y * oWidth + x;
+
+    const int dx = ((float)x * scale.x);
+    const int dy = ((float)y * scale.y);
+
+    const float3 px  = input[ dy * iWidth + dx ];
+//    const float3 rgb = make_float3(px.x, px.y, px.z);
+
+    output[n * 0 + m] = px.x/_scale.x - _shift.x;
+    output[n * 1 + m] = px.y/_scale.y - _shift.y;
+    output[n * 2 + m] = px.z/_scale.z - _shift.z;
+}
+
+
+// cudaPreImageNetRGB
+cudaError_t cudaPreImageNetScaleShiftRGB( float3* input, size_t inputWidth, size_t inputHeight,
+                                float* output, size_t outputWidth, size_t outputHeight,
+                                float3 _scale, float3 _shift,
+                                cudaStream_t stream )
+{
+    if( !input || !output )
+        return cudaErrorInvalidDevicePointer;
+
+    if( inputWidth == 0 || outputWidth == 0 || inputHeight == 0 || outputHeight == 0 )
+        return cudaErrorInvalidValue;
+
+    const float2 scale = make_float2( float(inputWidth) / float(outputWidth),
+                                      float(inputHeight) / float(outputHeight) );
+
+    // launch kernel
+    const dim3 blockDim(8, 8);
+    const dim3 gridDim(iDivUp(outputWidth,blockDim.x), iDivUp(outputHeight,blockDim.y));
+
+//    std::cerr << iDivUp(outputWidth,blockDim.x) << " " << iDivUp(outputHeight,blockDim.y) << std::endl;
+
+    gpuPreImageNetScaleShiftRGB<<<gridDim, blockDim, 0, stream>>>(scale, input, inputWidth, output, outputWidth, outputHeight, _scale, _shift);
+
+    return CUDA(cudaGetLastError());
+}
 
 // gpuPreImageNetBGR
 __global__ void gpuPreImageNetBGR( float2 scale, float4* input, int iWidth, float* output, int oWidth, int oHeight )

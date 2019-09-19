@@ -23,11 +23,15 @@ protected:
     float* imgCUDA  = nullptr;
 private:
     size_t imgSize = 0;
+    float3 scale;
+    float3 shift;
 
 public:
     TRTModel(
             const char* model_path,
             const char* input_blob,
+            std::tuple<float, float, float>& scale,
+            std::tuple<float, float, float>& shift,
             const std::vector<std::string>& output_blobs,
             uint32_t maxBatchSize);
 

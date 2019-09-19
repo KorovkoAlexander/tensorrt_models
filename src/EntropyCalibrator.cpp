@@ -7,15 +7,14 @@
 
 EntropyCalibrator::EntropyCalibrator(
         const std::string& file_list,
-        const int& batchSize,
         const int& width,
         const int& height,
         const int& channel,
-        bool readCache):
-        mReadCache(readCache),
-        _file_list(file_list), _cur_id(0)
+        const float3& scale,
+        const float3& shift):
+        _file_list(file_list), _cur_id(0), scale(scale), shift(shift)
 {
-    _batch = new float[batchSize * width * height * channel];
+    _batch = new float[width * height * channel];
 
     std::ifstream infile(file_list);
     std::string tmp;
@@ -26,8 +25,8 @@ EntropyCalibrator::EntropyCalibrator(
         std::cout << tmp << std::endl;
     }
 
-    dims = nvinfer1::DimsNCHW(batchSize, channel, height, width);
-    mInputCount1 = dims.n() * dims.c() * dims.h() * dims.w();
+    dims = nvinfer1::DimsCHW(channel, height, width);
+    mInputCount1 = dims.c() * dims.h() * dims.w();
     cudaMalloc(&mDeviceInput1, mInputCount1 * sizeof(float));
 };
 
@@ -37,34 +36,45 @@ EntropyCalibrator::~EntropyCalibrator()
     cudaFree(mDeviceInput1);
 };
 
-int EntropyCalibrator::getBatchSize() const { return dims.n();};
+int EntropyCalibrator::getBatchSize() const { return 1;};
 
 bool EntropyCalibrator::getBatch(void* bindings[], const char* names[], int nbBindings)
 {
-    if(_cur_id + dims.n() >= _fnames.size()){
+    if(_cur_id + 1 >= _fnames.size()){
         return false;
     }
 
-    for(int i = 0; i < dims.n(); i++){
-        _cur_id+=1;
-        std::string fname = _fnames[_cur_id];
-        int width = dims.w();
-        int height = dims.h();
-        int channels = dims.c();
-        unsigned char* img  = loadImageIO(fname.c_str(), &width, &height, &channels);
+    _cur_id+=1;
+    std::string fname = _fnames[_cur_id];
+    int width = dims.w();
+    int height = dims.h();
+    int channels = dims.c();
+    unsigned char* img  = loadImageIO(fname.c_str(), &width, &height, &channels);
 
-
-        for(int c=0; c<channels; c++){
-            for(int h=0; h<height; h++){
-                for(int w=0; w<width; w++){
-                    int pix_id = h*w*c + w*c + c;
-                    int row_id = i*h*w*c + c*h*w + h*w + w;
-                    _batch[row_id] = float(img[pix_id]);
-                }
-            }
+    for(int k = 0; k < width*height*channels; k++){
+        int c = k % channels;
+        float c_scale, c_shift;
+        switch (c){
+            case 0: //r
+                c_scale = scale.x;
+                c_shift = shift.x;
+                break;
+            case 1: // g
+                c_scale = scale.y;
+                c_shift = shift.y;
+                break;
+            case 2: // b
+                c_scale = scale.z;
+                c_shift = shift.z;
+                break;
+            default:
+                std::cout << "Some problems with calibrating reading.." << std:: endl;
+                exit(-1);
         }
-        free(img);
+        _batch[k] = (float)(img[k])/c_scale - c_shift;
     }
+
+    free(img);
 
 //    _cur_id += dims.n();
     cudaMemcpy(mDeviceInput1, _batch,  mInputCount1 * sizeof(float), cudaMemcpyHostToDevice);
@@ -74,21 +84,12 @@ bool EntropyCalibrator::getBatch(void* bindings[], const char* names[], int nbBi
 
 const void* EntropyCalibrator::readCalibrationCache(size_t& length)
 {
-    std::cout << "Reading from cache: "<< calibrationTableName()<<std::endl;
-    mCalibrationCache.clear();
-    std::ifstream input(calibrationTableName(), std::ios::binary);
-    input >> std::noskipws;
-    if (mReadCache && input.good())
-        std::copy(std::istream_iterator<char>(input), std::istream_iterator<char>(), std::back_inserter(mCalibrationCache));
-
-    length = mCalibrationCache.size();
-    return length ? &mCalibrationCache[0] : nullptr;
+    return nullptr;
 };
 
 void EntropyCalibrator::writeCalibrationCache(const void* cache, size_t length)
 {
-    std::ofstream output(calibrationTableName(), std::ios::binary);
-    output.write(reinterpret_cast<const char*>(cache), length);
+
 };
 
 std::string EntropyCalibrator::calibrationTableName()

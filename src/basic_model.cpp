@@ -572,6 +572,8 @@ precisionType FindFastestPrecision( deviceType device, bool allowInt8 )
 
 bool convertONNX(const std::string& modelFile, // name for model
                  const std::string& file_list,
+                 const std::tuple<float, float, float>& scale,
+                 const std::tuple<float, float, float>& shift,
                  unsigned int maxBatchSize,			   // batch size - NB must be at least as large as the batch we want to run with
                  bool allowGPUFallback,
                  deviceType device,
@@ -624,12 +626,20 @@ bool convertONNX(const std::string& modelFile, // name for model
     {
         builder->setInt8Mode(true);
 
-        int batch_size = 1;
         int imgWidth = DIMS_W(inputDimensions);
         int imgHeight = DIMS_H(inputDimensions);
         int imgChannels = DIMS_C(inputDimensions);
 
-        nvinfer1::IInt8Calibrator* calibrator= new EntropyCalibrator(file_list, batch_size, imgWidth, imgHeight, imgChannels, false);
+
+
+        nvinfer1::IInt8Calibrator* calibrator= new EntropyCalibrator(
+                file_list,
+                imgWidth,
+                imgHeight,
+                imgChannels,
+                make_float3(std::get<0>(scale), std::get<1>(scale), std::get<2>(scale)),
+                make_float3(std::get<0>(shift), std::get<1>(shift), std::get<2>(shift))
+                );
 
         builder->setInt8Calibrator(calibrator);
     }

@@ -14,6 +14,7 @@
 #include <string>
 #include <sstream>
 #include <math.h>
+#include <tuple>
 
 typedef nvinfer1::DimsCHW Dims3;
 
@@ -65,6 +66,8 @@ precisionType FindFastestPrecision( deviceType device, bool allowInt8 );
 
 bool convertONNX(const std::string& modelFile, // name for model
                  const std::string& file_list,
+                 const std::tuple<float, float, float>& scale,
+                 const std::tuple<float, float, float>& shift,
                  unsigned int maxBatchSize,			   // batch size - NB must be at least as large as the batch we want to run with
                  bool allowGPUFallback,
                  deviceType device = DEVICE_GPU,

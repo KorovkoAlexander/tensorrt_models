@@ -13,6 +13,19 @@
 cudaError_t cudaPreImageNetRGB( float3* input, size_t inputWidth, size_t inputHeight, float* output, size_t outputWidth, size_t outputHeight, cudaStream_t stream );
 cudaError_t cudaPreImageNetBGR( float4* input, size_t inputWidth, size_t inputHeight, float* output, size_t outputWidth, size_t outputHeight, cudaStream_t stream );
 
+
+cudaError_t cudaPreImageNetScaleShiftRGB(
+        float3* input,
+        size_t inputWidth,
+        size_t inputHeight,
+        float* output,
+        size_t outputWidth,
+        size_t outputHeight,
+        float3 scale,
+        float3 shift,
+        cudaStream_t stream
+        );
+
 /*
  * Downsample and apply mean pixel subtraction, NCHW format
  */

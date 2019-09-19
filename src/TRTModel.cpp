@@ -8,12 +8,17 @@
 TRTModel::TRTModel(
         const char* model_path,
         const char* input_blob,
+        std::tuple<float, float, float>& _scale,
+        std::tuple<float, float, float>& _shift,
         const std::vector<std::string>& output_blobs,
         uint32_t maxBatchSize)
 {
     bool res = LoadNetwork(model_path, input_blob, output_blobs, maxBatchSize);
     if (!res)
         throw runtime_error("Fuck! Failed to load the model :(");
+
+    scale = make_float3(std::get<0>(_scale), std::get<1>(_scale), std::get<2>(_scale));
+    shift = make_float3(std::get<0>(_shift), std::get<1>(_shift), std::get<2>(_shift));
 
     imgSize = DIMS_W(mInputDims) * DIMS_H(mInputDims) * sizeof(float) * 3;
 
@@ -61,8 +66,9 @@ py::object TRTModel::Apply(py::array_t<uint8_t, py::array::c_style> image)
         return py::none();
     }
 
+
     // downsample and convert to band-sequential BGR
-    if( CUDA_FAILED(cudaPreImageNetRGB((float3*)imgCPU, imgWidth, imgHeight, mInputCUDA, mWidth, mHeight, GetStream())) )
+    if( CUDA_FAILED(cudaPreImageNetScaleShiftRGB((float3*)imgCPU, imgWidth, imgHeight, mInputCUDA, mWidth, mHeight, scale, shift, GetStream())) )
     {
         printf("TRTModel::Apply() -- cudaPreImageNet failed\n");
         return py::none();
@@ -117,19 +123,23 @@ PYBIND11_MODULE(tensorrt_models, m){
     m.def("convertONNX", &convertONNX, "convert ONNX model into engine file",
             py::arg("modelFile"),
             py::arg("file_list"),
-            py::arg("maxBatchSize"),
-            py::arg("allowGPUFallback"),
+            py::arg("scale") = std::tuple<float, float, float>(256, 256, 256),
+            py::arg("shift") = std::tuple<float, float, float>(0.5, 0.5, 0.5),
+            py::arg("maxBatchSize") = 1,
+            py::arg("allowGPUFallback") = true,
             py::arg("device") = DEVICE_GPU,
             py::arg("precision") = TYPE_FP32);
 
     py::class_<TRTModel>(m, "TRTModel")
             .def(py::init([](
-                    string model_path,
-                    string input_blob,
-                    vector<string>& output_blobs,
+                    const string& model_path,
+                    const string& input_blob,
+                    std::tuple<float, float, float> scale,
+                    std::tuple<float, float, float> shift,
+                    const vector<string>& output_blobs,
                     uint32_t max_batch_size
             ){
-                return new TRTModel(model_path.c_str(), input_blob.c_str(), output_blobs, max_batch_size);
+                return new TRTModel(model_path.c_str(), input_blob.c_str(), scale, shift, output_blobs, max_batch_size);
             }))
             .def("apply", &TRTModel::Apply)
             .def_property_readonly("input_dims", &TRTModel::getInputDims)

@@ -12,17 +12,18 @@
 #include <fstream>
 #include <iostream>
 #include <cuda_runtime.h>
+#include <tuple>
 
 class EntropyCalibrator : public nvinfer1::IInt8EntropyCalibrator
 {
 public:
     EntropyCalibrator(
             const std::string& file_list,
-            const int& batchSize,
             const int& width,
             const int& height,
             const int& channel,
-            bool readCache);
+            const float3& scale = {256, 256, 256},
+            const float3& shift = {0, 0, 0});
 
     ~EntropyCalibrator() override ;
 
@@ -36,16 +37,17 @@ public:
 
 private:
     static std::string calibrationTableName();
-    bool mReadCache{ true };
     size_t mInputCount1;
     void* mDeviceInput1{ nullptr };
-    std::vector<char> mCalibrationCache;
+
+    float3 scale;
+    float3 shift;
 
     int _cur_id;
     std::string _file_list;
     std::vector<std::string> _fnames;
     float* _batch;
-    nvinfer1::DimsNCHW dims;
+    nvinfer1::DimsCHW dims;
 };
 
 
