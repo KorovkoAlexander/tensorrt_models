@@ -57,7 +57,7 @@ unsigned char* loadImageIO( const char* filename, int* width, int* height, int* 
     const int resizeWidth  = *width;
     const int resizeHeight = *height;
 
-    if( resizeWidth > 0 && resizeHeight > 0 && resizeWidth != imgWidth && resizeHeight != imgHeight )
+    if( resizeWidth > 0 && resizeHeight > 0 && (resizeWidth != imgWidth || resizeHeight != imgHeight))
     {
         unsigned char* img_org = img;
 

@@ -19,11 +19,13 @@ EntropyCalibrator::EntropyCalibrator(
     std::ifstream infile(file_list);
     std::string tmp;
 
-    std:: cout << "Found images!" << std::endl;
+    int num_images = 0;
     while(infile >> tmp) {
         _fnames.push_back(tmp);
-        std::cout << tmp << std::endl;
+        num_images++;
     }
+
+    std:: cout << "Found " << num_images <<" images!" << std::endl;
 
     dims = nvinfer1::DimsCHW(channel, height, width);
     mInputCount1 = dims.c() * dims.h() * dims.w();
@@ -50,6 +52,16 @@ bool EntropyCalibrator::getBatch(void* bindings[], const char* names[], int nbBi
     int height = dims.h();
     int channels = dims.c();
     unsigned char* img  = loadImageIO(fname.c_str(), &width, &height, &channels);
+
+    while (img == nullptr){
+        if(_cur_id + 1 >= _fnames.size()){
+            return false;
+        }
+
+        _cur_id+=1;
+        fname = _fnames[_cur_id];
+        img  = loadImageIO(fname.c_str(), &width, &height, &channels);
+    }
 
     for(int k = 0; k < width*height*channels; k++){
         int c = k % channels;
