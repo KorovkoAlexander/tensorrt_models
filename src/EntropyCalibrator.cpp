@@ -4,6 +4,7 @@
 
 #include "EntropyCalibrator.h"
 #include <iterator>
+#include <assert.h>
 
 EntropyCalibrator::EntropyCalibrator(
         const std::string& file_list,
@@ -51,6 +52,8 @@ bool EntropyCalibrator::getBatch(void* bindings[], const char* names[], int nbBi
     int width = dims.w();
     int height = dims.h();
     int channels = dims.c();
+
+    assert(channels == 3);
     unsigned char* img  = loadImageIO(fname.c_str(), &width, &height, &channels);
 
     while (img == nullptr){
@@ -63,27 +66,17 @@ bool EntropyCalibrator::getBatch(void* bindings[], const char* names[], int nbBi
         img  = loadImageIO(fname.c_str(), &width, &height, &channels);
     }
 
-    for(int k = 0; k < width*height*channels; k++){
-        int c = k % channels;
-        float c_scale, c_shift;
-        switch (c){
-            case 0: //r
-                c_scale = scale.x;
-                c_shift = shift.x;
-                break;
-            case 1: // g
-                c_scale = scale.y;
-                c_shift = shift.y;
-                break;
-            case 2: // b
-                c_scale = scale.z;
-                c_shift = shift.z;
-                break;
-            default:
-                std::cout << "Some problems with calibrating reading.." << std:: endl;
-                exit(-1);
+    for( int y=0; y < height; y++ )
+    {
+        const size_t yOffset = y * width * channels * sizeof(uint8_t);
+        for( int x=0; x < width; x++ )
+        {
+            const size_t offset = yOffset + x * channels * sizeof(uint8_t);
+            _batch[offset+2] = float(img[offset])/scale.x - shift.x;
+            _batch[offset+1] = float(img[offset+1])/scale.y - shift.y;
+            _batch[offset] = float(img[offset+2])/scale.z - shift.z;
+
         }
-        _batch[k] = (float)(img[k])/c_scale - c_shift;
     }
 
     free(img);

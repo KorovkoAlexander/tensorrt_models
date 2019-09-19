@@ -134,9 +134,9 @@ PYBIND11_MODULE(tensorrt_models, m){
             .def(py::init([](
                     const string& model_path,
                     const string& input_blob,
+                    const vector<string>& output_blobs,
                     std::tuple<float, float, float> scale,
                     std::tuple<float, float, float> shift,
-                    const vector<string>& output_blobs,
                     uint32_t max_batch_size
             ){
                 return new TRTModel(model_path.c_str(), input_blob.c_str(), scale, shift, output_blobs, max_batch_size);
