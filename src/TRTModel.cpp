@@ -119,6 +119,10 @@ PYBIND11_MODULE(tensorrt_models, m){
             .value("DEVICE_DLA_0",  DEVICE_DLA_0  )
             .value("DEVICE_DLA_1",  DEVICE_DLA_1  )
             .export_values();
+    py::enum_<pixelFormat>(m, "pixelFormat")
+            .value("RGB", RGB )
+            .value("BGR",  BGR)
+            .export_values();
 
     m.def("convertONNX", &convertONNX, "convert ONNX model into engine file",
             py::arg("modelFile"),
@@ -128,7 +132,8 @@ PYBIND11_MODULE(tensorrt_models, m){
             py::arg("maxBatchSize") = 1,
             py::arg("allowGPUFallback") = true,
             py::arg("device") = DEVICE_GPU,
-            py::arg("precision") = TYPE_FP32);
+            py::arg("precision") = TYPE_FP32,
+            py::arg("format") = BGR);
 
     py::class_<TRTModel>(m, "TRTModel")
             .def(py::init([](

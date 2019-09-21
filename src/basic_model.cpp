@@ -9,8 +9,6 @@
 #include "NvUffParser.h"
 #include "NvInferPlugin.h"
 
-#include <EntropyCalibrator.h>
-
 #include <iostream>
 #include <fstream>
 #include <map>
@@ -576,8 +574,9 @@ bool convertONNX(const std::string& modelFile, // name for model
                  const std::tuple<float, float, float>& shift,
                  unsigned int maxBatchSize,			   // batch size - NB must be at least as large as the batch we want to run with
                  bool allowGPUFallback,
-                 deviceType device,
-                 precisionType precision)			   // output stream for the GIE model
+                 const deviceType& device,
+                 precisionType precision,
+                 const pixelFormat& format)			   // output stream for the GIE model
 {
     // create API root class - must span the lifetime of the engine usage
     nvinfer1::IBuilder* builder = CREATE_INFER_BUILDER(gLogger);
@@ -700,9 +699,6 @@ bool convertONNX(const std::string& modelFile, // name for model
 
     engine->destroy();
     builder->destroy();
-
-
-
 
     return true;
 }

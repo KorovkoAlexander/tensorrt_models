@@ -14,6 +14,12 @@
 #include <cuda_runtime.h>
 #include <tuple>
 
+enum pixelFormat
+{
+    BGR = 0,
+    RGB
+};
+
 class EntropyCalibrator : public nvinfer1::IInt8EntropyCalibrator
 {
 public:
@@ -23,7 +29,8 @@ public:
             const int& height,
             const int& channel,
             const float3& scale = {256, 256, 256},
-            const float3& shift = {0, 0, 0});
+            const float3& shift = {0, 0, 0},
+            const pixelFormat& format = BGR);
 
     ~EntropyCalibrator() override ;
 
@@ -48,6 +55,7 @@ private:
     std::vector<std::string> _fnames;
     float* _batch;
     nvinfer1::DimsCHW dims;
+    pixelFormat format;
 };
 
 

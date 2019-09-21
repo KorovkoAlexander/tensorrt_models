@@ -12,8 +12,9 @@ EntropyCalibrator::EntropyCalibrator(
         const int& height,
         const int& channel,
         const float3& scale,
-        const float3& shift):
-        _file_list(file_list), _cur_id(0), scale(scale), shift(shift)
+        const float3& shift,
+        const pixelFormat& format):
+        _file_list(file_list), _cur_id(0), scale(scale), shift(shift), format(format)
 {
     _batch = new float[width * height * channel];
 
@@ -72,10 +73,21 @@ bool EntropyCalibrator::getBatch(void* bindings[], const char* names[], int nbBi
         for( int x=0; x < width; x++ )
         {
             const size_t offset = yOffset + x * channels * sizeof(uint8_t);
-            _batch[offset+2] = float(img[offset])/scale.x - shift.x;
-            _batch[offset+1] = float(img[offset+1])/scale.y - shift.y;
-            _batch[offset] = float(img[offset+2])/scale.z - shift.z;
-
+            switch (format){
+                case BGR:
+                    _batch[offset+2] = float(img[offset])/scale.x - shift.x;
+                    _batch[offset+1] = float(img[offset+1])/scale.y - shift.y;
+                    _batch[offset] = float(img[offset+2])/scale.z - shift.z;
+                    break;
+                case RGB:
+                    _batch[offset] = float(img[offset])/scale.x - shift.x;
+                    _batch[offset+1] = float(img[offset+1])/scale.y - shift.y;
+                    _batch[offset+2] = float(img[offset+2])/scale.z - shift.z;
+                    break;
+                default:
+                    std::cerr << "Bad pixelFormat!" << std::endl;
+                    exit(-1);
+            }
         }
     }
 
