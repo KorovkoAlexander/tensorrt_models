@@ -55,8 +55,8 @@ cudaError_t cudaPreImageNetRGB( float3* input, size_t inputWidth, size_t inputHe
 
 __global__ void gpuPreImageNetScaleShiftRGB(
         float2 scale, float3* input,
-        int iWidth, float* output,
-        int oWidth, int oHeight,
+        int iWidth, int iHeight, float* output,
+        int oWidth, int oHeight, int batchSize,
         float3 _scale, float3 _shift
         ){
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -65,24 +65,26 @@ __global__ void gpuPreImageNetScaleShiftRGB(
     if( x >= oWidth || y >= oHeight )
         return;
 
+    const int k = 3 * oWidth * oHeight;
     const int n = oWidth * oHeight;
     const int m = y * oWidth + x;
 
     const int dx = ((float)x * scale.x);
     const int dy = ((float)y * scale.y);
 
-    const float3 px  = input[ dy * iWidth + dx ];
-//    const float3 rgb = make_float3(px.x, px.y, px.z);
+    for(int b = 0; b < batchSize; b++){
+        const float3 px  = input[b*iWidth*iHeight +  dy * iWidth + dx ];
 
-    output[n * 0 + m] = px.x/_scale.x - _shift.x;
-    output[n * 1 + m] = px.y/_scale.y - _shift.y;
-    output[n * 2 + m] = px.z/_scale.z - _shift.z;
+        output[k*b + n * 0 + m] = px.x/_scale.x - _shift.x;
+        output[k*b + n * 1 + m] = px.y/_scale.y - _shift.y;
+        output[k*b + n * 2 + m] = px.z/_scale.z - _shift.z;
+    }
 }
 
 
 // cudaPreImageNetRGB
 cudaError_t cudaPreImageNetScaleShiftRGB( float3* input, size_t inputWidth, size_t inputHeight,
-                                float* output, size_t outputWidth, size_t outputHeight,
+                                float* output, size_t outputWidth, size_t outputHeight, size_t batchSize,
                                 float3 _scale, float3 _shift,
                                 cudaStream_t stream )
 {
@@ -101,7 +103,7 @@ cudaError_t cudaPreImageNetScaleShiftRGB( float3* input, size_t inputWidth, size
 
 //    std::cerr << iDivUp(outputWidth,blockDim.x) << " " << iDivUp(outputHeight,blockDim.y) << std::endl;
 
-    gpuPreImageNetScaleShiftRGB<<<gridDim, blockDim, 0, stream>>>(scale, input, inputWidth, output, outputWidth, outputHeight, _scale, _shift);
+    gpuPreImageNetScaleShiftRGB<<<gridDim, blockDim, 0, stream>>>(scale, input, inputWidth, inputHeight, output, outputWidth, outputHeight, batchSize, _scale, _shift);
 
     return CUDA(cudaGetLastError());
 }

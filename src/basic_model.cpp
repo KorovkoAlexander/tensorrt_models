@@ -85,7 +85,7 @@ static inline nvinfer1::Dims validateDims( const nvinfer1::Dims& dims )
 }
 #endif
 
-bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgHeight){
+bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgHeight, const int& batchSize){
     if( !img )
         return false;
 
@@ -99,23 +99,41 @@ bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgH
         return false;
     }
 
-    // convert uint8 image to float4
     float3* cpuPtr = *cpu;
 
-    for( int y=0; y < imgHeight; y++ )
-    {
-        const size_t yOffset = y * imgWidth * imgChannels * sizeof(uint8_t);
+    for (int b = 0; b < batchSize; b++){
+        const size_t bOffset = b*imgWidth*imgHeight*imgChannels* sizeof(uint8_t);
 
-        for( int x=0; x < imgWidth; x++ )
+        for( int y=0; y < imgHeight; y++ )
         {
-#define GET_PIXEL(channel)	    float(img[offset + channel])
-#define SET_PIXEL_FLOAT3(r,g,b) cpuPtr[y*imgWidth+x] = make_float3(r,g,b)
+            const size_t yOffset = bOffset + y * imgWidth * imgChannels * sizeof(uint8_t);
 
-            const size_t offset = yOffset + x * imgChannels * sizeof(uint8_t);
-            SET_PIXEL_FLOAT3(GET_PIXEL(0), GET_PIXEL(1), GET_PIXEL(2));
+            for( int x=0; x < imgWidth; x++ )
+            {
+                #define GET_PIXEL(channel)	    float(img[offset + channel])
+                #define SET_PIXEL_FLOAT3(_r,_g,_b) cpuPtr[b*imgWidth*imgHeight + y*imgWidth + x] = make_float3(_r,_g,_b)
 
+                const size_t offset = yOffset + x * imgChannels * sizeof(uint8_t);
+                SET_PIXEL_FLOAT3(GET_PIXEL(0), GET_PIXEL(1), GET_PIXEL(2));
+
+            }
         }
     }
+
+//    for( int y=0; y < imgHeight; y++ )
+//    {
+//        const size_t yOffset = y * imgWidth * imgChannels * sizeof(uint8_t);
+//
+//        for( int x=0; x < imgWidth; x++ )
+//        {
+//            #define GET_PIXEL(channel)	    float(img[offset + channel])
+//            #define SET_PIXEL_FLOAT3(r,g,b) cpuPtr[y*imgWidth+x] = make_float3(r,g,b)
+//
+//            const size_t offset = yOffset + x * imgChannels * sizeof(uint8_t);
+//            SET_PIXEL_FLOAT3(GET_PIXEL(0), GET_PIXEL(1), GET_PIXEL(2));
+//
+//        }
+//    }
     return true;
 }
 
@@ -197,9 +215,9 @@ BasicModel::~BasicModel(){
 
 
 // LoadNetwork
-bool BasicModel::LoadNetwork(const char* model_path,
-                             const char* input_blob,
-                             const char* output_blob,
+bool BasicModel::LoadNetwork(const std::string& model_path,
+                             const std::string& input_blob,
+                             const std::string& output_blob,
                              uint32_t maxBatchSize,
                              deviceType device,
                              bool allowGPUFallback,
@@ -213,8 +231,8 @@ bool BasicModel::LoadNetwork(const char* model_path,
 
 
 // LoadNetwork
-bool BasicModel::LoadNetwork(const char* model_path_,
-                             const char* input_blob,
+bool BasicModel::LoadNetwork(const std::string& model_path_,
+                             const std::string& input_blob,
                              const std::vector<std::string>& output_blobs,
                              uint32_t maxBatchSize,
                              deviceType device, bool allowGPUFallback,
@@ -229,8 +247,8 @@ bool BasicModel::LoadNetwork(const char* model_path_,
 
 // LoadNetwork
 bool BasicModel::LoadNetwork(
-        const char* model_path_,
-        const char* input_blob,
+        const std::string& model_path,
+        const std::string& input_blob,
         const Dims3& input_dims,
         const std::vector<std::string>& output_blobs,
         uint32_t maxBatchSize,
@@ -239,9 +257,6 @@ bool BasicModel::LoadNetwork(
         cudaStream_t stream
 )
 {
-    if(!model_path_ )
-        return false;
-
     printf(LOG_TRT "TensorRT version %u.%u.%u\n", NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH);
 
     /*
@@ -260,8 +275,6 @@ bool BasicModel::LoadNetwork(
         else
             printf(LOG_TRT "completed loading NVIDIA plugins.\n");
     }
-
-    const std::string model_path    = model_path_;
 
     /*
      * attempt to load network from cache before profiling with tensorRT
@@ -369,15 +382,15 @@ bool BasicModel::LoadNetwork(
     /*
      * determine dimensions of network input bindings
      */
-    const int inputIndex = engine->getBindingIndex(input_blob);
+    const int inputIndex = engine->getBindingIndex(input_blob.c_str());
 
-    printf(LOG_TRT "binding to input 0 %s  binding index:  %i\n", input_blob, inputIndex);
+    printf(LOG_TRT "binding to input 0 %s  binding index:  %i\n", input_blob.c_str(), inputIndex);
 
     nvinfer1::Dims inputDims = validateDims(engine->getBindingDimensions(inputIndex));
 
     size_t inputSize = maxBatchSize * DIMS_C(inputDims) * DIMS_H(inputDims) * DIMS_W(inputDims) * sizeof(float);
     printf(LOG_TRT "binding to input 0 %s  dims (b=%u c=%u h=%u w=%u) size=%zu\n",
-           input_blob,
+           input_blob.c_str(),
            maxBatchSize,
            DIMS_C(inputDims),
            DIMS_H(inputDims),

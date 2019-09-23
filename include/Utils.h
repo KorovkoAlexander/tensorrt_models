@@ -21,6 +21,7 @@ cudaError_t cudaPreImageNetScaleShiftRGB(
         float* output,
         size_t outputWidth,
         size_t outputHeight,
+        size_t batchSize,
         float3 scale,
         float3 shift,
         cudaStream_t stream

@@ -6,11 +6,11 @@
 #include <cudaMappedMemory.h>
 
 TRTModel::TRTModel(
-        const char* model_path,
-        const char* input_blob,
-        std::tuple<float, float, float>& _scale,
-        std::tuple<float, float, float>& _shift,
+        const string& model_path,
+        const string& input_blob,
         const std::vector<std::string>& output_blobs,
+        const std::tuple<float, float, float>& _scale,
+        const std::tuple<float, float, float>& _shift,
         uint32_t maxBatchSize)
 {
     bool res = LoadNetwork(model_path, input_blob, output_blobs, maxBatchSize);
@@ -20,7 +20,7 @@ TRTModel::TRTModel(
     scale = make_float3(std::get<0>(_scale), std::get<1>(_scale), std::get<2>(_scale));
     shift = make_float3(std::get<0>(_shift), std::get<1>(_shift), std::get<2>(_shift));
 
-    imgSize = DIMS_W(mInputDims) * DIMS_H(mInputDims) * sizeof(float) * 3;
+    imgSize = maxBatchSize * DIMS_W(mInputDims) * DIMS_H(mInputDims) * sizeof(float) * 3;
 
     if( !cudaAllocMapped((void**)&imgCPU, (void**)&imgCUDA, imgSize) )
     {
@@ -39,22 +39,24 @@ py::object TRTModel::Apply(py::array_t<uint8_t, py::array::c_style> image)
 {
     py::buffer_info image_info = image.request();
 
-    if (image_info.ndim != 3)
-        throw runtime_error("Number of dimentions nums be 3");
+    if (image_info.ndim != 4)
+        throw runtime_error("Number of dimentions nums be 4");
 
     const int imgWidth = DIMS_W(mInputDims);
-    if (imgWidth != image_info.shape[1]){
+    if (imgWidth != image_info.shape[2]){
         cerr << "imgWidth must be equal to " << imgWidth << ", but got input is " <<  image_info.shape[1] << endl;
         return py::none();
     }
 
     const int imgHeight = DIMS_H(mInputDims);
-    if (imgHeight != image_info.shape[0]){
+    if (imgHeight != image_info.shape[1]){
         cerr << "imgHeight must be equal to " << imgHeight << ", but got input is " <<  image_info.shape[0] << endl;
         return py::none();
     }
 
-    if(! loadImage((uint8_t *)image_info.ptr, (float3**)&imgCPU, imgWidth, imgHeight)){
+    const int batchSize = image_info.shape[0];
+
+    if(! loadImage((uint8_t *)image_info.ptr, (float3**)&imgCPU, imgWidth, imgHeight, batchSize)){
         cerr << "Cant properly read numpy buffer :(" << endl;
         return py::none();
     }
@@ -66,14 +68,24 @@ py::object TRTModel::Apply(py::array_t<uint8_t, py::array::c_style> image)
         return py::none();
     }
 
-
     // downsample and convert to band-sequential BGR
-    if( CUDA_FAILED(cudaPreImageNetScaleShiftRGB((float3*)imgCPU, imgWidth, imgHeight, mInputCUDA, mWidth, mHeight, scale, shift, GetStream())) )
+    if( CUDA_FAILED(
+            cudaPreImageNetScaleShiftRGB(
+                    (float3*)imgCPU,
+                    imgWidth,
+                    imgHeight,
+                    mInputCUDA,
+                    mWidth,
+                    mHeight,
+                    batchSize,
+                    scale,
+                    shift,
+                    GetStream())
+                    ))
     {
         printf("TRTModel::Apply() -- cudaPreImageNet failed\n");
         return py::none();
     }
-
 
     // process with GIE
 //    void* inferenceBuffers[] = {mInputCUDA, mOutputs[OUTPUT_HEATMAP].CUDA, mOutputs[OUTPUT_PAF].CUDA};
@@ -82,11 +94,9 @@ py::object TRTModel::Apply(py::array_t<uint8_t, py::array::c_style> image)
     for(const auto& x: mOutputs){
         inferenceBuffers.push_back(x.CUDA);
     }
-    const bool result = mContext->enqueue(/*batchsize*/  1, inferenceBuffers.data(), GetStream(), nullptr);
-
+    const bool result = mContext->enqueue(/*batchsize*/  batchSize, inferenceBuffers.data(), GetStream(), nullptr);
 
     CUDA(cudaStreamSynchronize(mStream));
-
 
     if(!result)
     {
@@ -126,7 +136,7 @@ PYBIND11_MODULE(tensorrt_models, m){
 
     m.def("convertONNX", &convertONNX, "convert ONNX model into engine file",
             py::arg("modelFile"),
-            py::arg("file_list"),
+            py::arg("file_list") = "",
             py::arg("scale") = std::tuple<float, float, float>(256, 256, 256),
             py::arg("shift") = std::tuple<float, float, float>(0.5, 0.5, 0.5),
             py::arg("maxBatchSize") = 1,
@@ -136,7 +146,23 @@ PYBIND11_MODULE(tensorrt_models, m){
             py::arg("format") = BGR);
 
     py::class_<TRTModel>(m, "TRTModel")
-            .def(py::init([](
+            .def(py::init<const string&, const string&, const vector<string>&, const std::tuple<float, float, float>& ,
+                    const std::tuple<float, float, float>&, uint32_t>(),
+                    py::arg("model_path"),
+                    py::arg("input_blob"),
+                    py::arg("output_blobs"),
+                    py::arg("scale") = std::tuple<float, float, float>(256, 256, 256),
+                    py::arg("shift") = std::tuple<float, float, float>(0.5, 0.5, 0.5),
+                    py::arg("max_batch_size") = 1)
+            .def("apply", &TRTModel::Apply)
+            .def_property_readonly("input_dims", &TRTModel::getInputDims)
+            .def_property_readonly("output_dims", &TRTModel::getOutputDims);
+}
+
+
+/*
+ *
+ * [](
                     const string& model_path,
                     const string& input_blob,
                     const vector<string>& output_blobs,
@@ -146,7 +172,4 @@ PYBIND11_MODULE(tensorrt_models, m){
             ){
                 return new TRTModel(model_path.c_str(), input_blob.c_str(), scale, shift, output_blobs, max_batch_size);
             }))
-            .def("apply", &TRTModel::Apply)
-            .def_property_readonly("input_dims", &TRTModel::getInputDims)
-            .def_property_readonly("output_dims", &TRTModel::getOutputDims);
-}
+ */

@@ -34,7 +34,11 @@ model = TRTModel(
 import cv2
 
 img = cv2.imread(img_path)
-outputs = model.apply(img)
+img1 = cv2.imread(img_path_1)
+img2 = cv2.imread(img_path_2)
+
+batch = np.stack([img1, img2, img3])
+outputs = model.apply(batch)
 ```
 Convert model from ONNX into TRT Engine:
 ```

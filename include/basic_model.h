@@ -20,6 +20,7 @@
 
 
 typedef nvinfer1::DimsCHW Dims3;
+typedef nvinfer1::DimsNCHW Dims4;
 
 #define DIMS_C(x) x.d[0]
 #define DIMS_H(x) x.d[1]
@@ -57,7 +58,7 @@ struct outputLayer
     float* CUDA;
 };
 
-bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgHeight);
+bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgHeight, const int& batchSize);
 
 bool DetectNativePrecision( const std::vector<precisionType>& types, precisionType type );
 
@@ -83,22 +84,22 @@ class BasicModel
 public:
     virtual ~BasicModel();
 
-    bool LoadNetwork( const char* model,
-                      const char* input_blob="data", const char* output_blob="prob",
+    bool LoadNetwork( const std::string& model,
+                      const std::string& input_blob="data", const std::string& output_blob="prob",
                       uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
                       deviceType device=DEVICE_GPU, bool allowGPUFallback=true,
                       cudaStream_t stream=nullptr);
 
-    bool LoadNetwork( const char* model,
-                      const char* input_blob,
+    bool LoadNetwork( const std::string& model,
+                      const std::string& input_blob,
                       const std::vector<std::string>& output_blobs,
                       uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
                       deviceType device=DEVICE_GPU,
                       bool allowGPUFallback=true,
                       cudaStream_t stream=nullptr);
 
-    bool LoadNetwork( const char* model,
-                      const char* input_blob,
+    bool LoadNetwork( const std::string& model,
+                      const std::string& input_blob,
                       const Dims3& input_dims,
                       const std::vector<std::string>& output_blobs,
                       uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,

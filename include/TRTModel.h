@@ -28,11 +28,11 @@ private:
 
 public:
     TRTModel(
-            const char* model_path,
-            const char* input_blob,
-            std::tuple<float, float, float>& scale,
-            std::tuple<float, float, float>& shift,
+            const string& model_path,
+            const string& input_blob,
             const std::vector<std::string>& output_blobs,
+            const std::tuple<float, float, float>& scale,
+            const std::tuple<float, float, float>& shift,
             uint32_t maxBatchSize);
 
     py::object Apply(py::array_t<uint8_t, py::array::c_style> image);
