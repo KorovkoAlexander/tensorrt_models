@@ -4,7 +4,7 @@ TensorRT inference in Python
 This project is aimed at providing fast inference for NN with tensorRT through its C++ API without any need of C++ programming. Use your lovely python.
 
 #### Examples
-[GoogleDrive](https://drive.google.com/file/d/1Nqvo2rmlZHegA6xMOKjmkyc6lzlr-ZqZ/view?usp=sharing)
+[GoogleDrive](https://drive.google.com/open?id=1mdh9E0s5SNf48scuUvrheff345cOfaRf)
 
 Build Instructions
 -------------
@@ -26,12 +26,14 @@ Then you can:
 from tensorrt_models import TRTModel
 
 model = TRTModel(
-	"path to your engine file", #str 
-	"input binding name", # str 
-	[list on output binging names], # List[str]
-	(256, 256, 256), # scale image preproc; Tuple[float]
-	(0.5, 0.5, 0.5), #shift image preproc; Tuple[float] 
-	max_batch_size #int
+	model_path = "path to your engine file", #str 
+	input_blob = "input binding name", # str 
+	output_blobs = [list on output binging names], # List[str]
+	scale = (256, 256, 256), # scale image preproc; Tuple[float]
+	shift = (0.5, 0.5, 0.5), #shift image preproc; Tuple[float] 
+	max_batch_size = 1, #int
+	device = 0, #on which GPU to run #int
+	logs_path = "path to logs file" #str
 	)
 
 import cv2
@@ -48,15 +50,16 @@ Convert model from ONNX into TRT Engine:
 from tensorrt_models import import convertONNX, precisionType, deviceType, pixelFormat
 
 convertONNX(
-	"path to onnx", # str
-	"path to file with paths for calib images", #str
-	(256, 256, 256), # scale image preproc; Tuple[float]
-	(0.5, 0.5, 0.5), #shift image preproc; Tuple[float]
-        1, # maxBatch;int
-        True, #allowGPUFallback 
-        device = deviceType.DEVICE_GPU, 
-        precision = precisionType.TYPE_INT8,
-        format = pixelFormat.BGR)
+	modelFile = "path to onnx", # str
+	file_list = "path to file with paths for calib images", #str
+	scale = (256, 256, 256), # scale image preproc; Tuple[float]
+	shift = (0.5, 0.5, 0.5), #shift image preproc; Tuple[float]
+    maxBatchSize = 1, # maxBatch;int
+    allowGPUFallback = True, #allowGPUFallback 
+    device = deviceType.DEVICE_GPU, 
+    precision = precisionType.TYPE_INT8,
+    format = pixelFormat.BGR,
+    logs_path = "path to logs file" #str)
 ```
 Must know details:
 >- Scale and Shift are used to make image preprocessing. Finally **float(image)/scale - shift** is fed into the network. The order of coeffs in this vectors (scale and shift) **must** correspont to input image format i.e. RGB. (None that openCV usually opens images as BGR).

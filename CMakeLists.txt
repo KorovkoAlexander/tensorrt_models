@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(tensorrt_models)
 
 set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_FLAGS -fPIC)
 
 include_directories(/home/alex/Downloads/TensorRT-5.1.2.2/include)
 
@@ -27,6 +28,7 @@ include_directories(${PROJECT_SOURCE_DIR}/image)
 include_directories(${PROJECT_SOURCE_DIR}/image/stb)
 
 add_subdirectory(pybind11)
+add_subdirectory(spdlog)
 
 cuda_add_library(tensorrt_models MODULE ${cudaSources} ${srcSources} ${imageSources})
 
@@ -35,6 +37,7 @@ target_link_libraries(tensorrt_models
         nvinfer_plugin
         nvonnxparser
         pybind11::module
+        spdlog::spdlog
         ${CUDA_LIBRARIES}
         )
 

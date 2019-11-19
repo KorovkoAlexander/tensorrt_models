@@ -33,7 +33,9 @@ public:
             const std::vector<std::string>& output_blobs,
             const std::tuple<float, float, float>& scale,
             const std::tuple<float, float, float>& shift,
-            uint32_t maxBatchSize);
+            uint32_t maxBatchSize,
+            const uint8_t& device,
+            const string& logs_path);
 
     py::object Apply(py::array_t<uint8_t, py::array::c_style> image);
 

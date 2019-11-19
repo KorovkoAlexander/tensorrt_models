@@ -3,6 +3,7 @@
 //
 
 #include "EntropyCalibrator.h"
+#include "spdlog/spdlog.h"
 #include <iterator>
 #include <assert.h>
 
@@ -27,7 +28,7 @@ EntropyCalibrator::EntropyCalibrator(
         num_images++;
     }
 
-    std:: cout << "Found " << num_images <<" images!" << std::endl;
+    spdlog::info("Found {} images!",num_images );
 
     dims = nvinfer1::DimsCHW(channel, height, width);
     mInputCount1 = dims.c() * dims.h() * dims.w();
@@ -85,7 +86,7 @@ bool EntropyCalibrator::getBatch(void* bindings[], const char* names[], int nbBi
                     _batch[offset+2] = float(img[offset+2])/scale.z - shift.z;
                     break;
                 default:
-                    std::cerr << "Bad pixelFormat!" << std::endl;
+                    spdlog::error("Bad pixelFormat!");
                     exit(-1);
             }
         }

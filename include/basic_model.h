@@ -76,7 +76,8 @@ bool convertONNX(const std::string& modelFile, // name for model
                  bool allowGPUFallback,
                  const deviceType& device = DEVICE_GPU,
                  precisionType precision = TYPE_FP32,
-                 const pixelFormat& format = BGR);
+                 const pixelFormat& format = BGR,
+                 const std::string& logs_path= {});
 
 
 class BasicModel
@@ -85,9 +86,11 @@ public:
     virtual ~BasicModel();
 
     bool LoadNetwork( const std::string& model,
-                      const std::string& input_blob="data", const std::string& output_blob="prob",
+                      const std::string& input_blob="data",
+                      const std::string& output_blob="prob",
                       uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
-                      deviceType device=DEVICE_GPU, bool allowGPUFallback=true,
+                      deviceType device=DEVICE_GPU,
+                      bool allowGPUFallback=true,
                       cudaStream_t stream=nullptr);
 
     bool LoadNetwork( const std::string& model,
@@ -121,8 +124,13 @@ public:
 
     inline const char* GetModelPath() const	{ return mModelPath.c_str(); }
 
-    inline std::map<std::string, uint32_t > getInputDims() const {return {{"width", mWidth}, {"height", mHeight}};};
+    inline std::map<std::string, uint32_t > getInputDims() const {
+        return {{"width", mWidth}, {"height", mHeight}};
+    };
+
     std::vector<std::map<std::string, uint32_t >> getOutputDims() const;
+
+    cudaError_t setDevice(int device);
 
 protected:
 

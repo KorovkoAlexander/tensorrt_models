@@ -9,6 +9,9 @@
 #include "NvUffParser.h"
 #include "NvInferPlugin.h"
 
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+
 #include <iostream>
 #include <fstream>
 #include <map>
@@ -21,7 +24,7 @@ class Logger : public nvinfer1::ILogger
     void log( Severity severity, const char* msg ) override
     {
         if( severity != Severity::kINFO /*|| mEnableDebug*/ )
-            printf(LOG_TRT "%s\n", msg);
+                spdlog::info(LOG_TRT "{}", msg);
     }
 } gLogger;
 
@@ -200,15 +203,15 @@ BasicModel::~BasicModel(){
 
 
     if(!cudaDeallocMapped((void**)mInputCPU)){
-        std::cerr << "Cant deallocate mInputCPU in dtor!" << std::endl;
+        spdlog::error("Cant deallocate mInputCPU in dtor!");
     }
     for(auto& x : mOutputs){
         if(!cudaDeallocMapped((void**)x.CPU)){
-            std::cerr << "Cant deallocate mOutputs in dtor!" << std::endl;
+            spdlog::error("Cant deallocate mOutputs in dtor!");
         }
     }
     if(CUDA_FAILED(cudaDeviceReset())){
-        std::cerr << "Cant reset the device in dtor!" << std::endl;
+        spdlog::error("Cant reset the device in dtor!");
     }
 
 }
@@ -226,7 +229,7 @@ bool BasicModel::LoadNetwork(const std::string& model_path,
     std::vector<std::string> outputs;
     outputs.emplace_back(output_blob);
 
-    return LoadNetwork(model_path, input_blob, outputs, maxBatchSize, device, allowGPUFallback );
+    return LoadNetwork(model_path, input_blob, outputs, maxBatchSize, device, allowGPUFallback, stream);
 }
 
 
@@ -239,9 +242,13 @@ bool BasicModel::LoadNetwork(const std::string& model_path_,
                              cudaStream_t stream)
 {
     return LoadNetwork(model_path_,
-                       input_blob, Dims3(1,1,1), output_blobs,
-                       maxBatchSize, device,
-                       allowGPUFallback, stream);
+                       input_blob,
+                       Dims3(1,1,1),
+                       output_blobs,
+                       maxBatchSize,
+                       device,
+                       allowGPUFallback,
+                       stream);
 }
 
 
@@ -257,7 +264,7 @@ bool BasicModel::LoadNetwork(
         cudaStream_t stream
 )
 {
-    printf(LOG_TRT "TensorRT version %u.%u.%u\n", NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH);
+    spdlog::info("TensorRT version {}.{}.{}", NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH);
 
     /*
      * load NV inference plugins
@@ -266,14 +273,14 @@ bool BasicModel::LoadNetwork(
 
     if( !loadedPlugins )
     {
-        printf(LOG_TRT "loading NVIDIA plugins...\n");
+        spdlog::info(LOG_TRT "loading NVIDIA plugins...");
 
         loadedPlugins = initLibNvInferPlugins(&gLogger, "");
 
         if( !loadedPlugins )
-            printf(LOG_TRT "failed to load NVIDIA plugins\n");
+            spdlog::error(LOG_TRT "failed to load NVIDIA plugins");
         else
-            printf(LOG_TRT "completed loading NVIDIA plugins.\n");
+            spdlog::info(LOG_TRT "completed loading NVIDIA plugins");
     }
 
     /*
@@ -281,13 +288,13 @@ bool BasicModel::LoadNetwork(
      */
 
     mCacheEnginePath = model_path;
-    printf(LOG_TRT "attempting to open engine cache file %s\n", mCacheEnginePath.c_str());
+    spdlog::info(LOG_TRT "attempting to open engine cache file {}", mCacheEnginePath.c_str());
 
     std::ifstream cache(model_path, std::ios::binary);
 
     if( !cache )
     {
-        printf(LOG_TRT "cache file not found, profiling network model on device\n");
+        spdlog::error(LOG_TRT "cache file not found, profiling network model on device");
         return false;
     }
 
@@ -299,7 +306,7 @@ bool BasicModel::LoadNetwork(
 
     if( !infer )
     {
-        printf(LOG_TRT "failed to create InferRuntime\n");
+        spdlog::error(LOG_TRT "failed to create InferRuntime");
         return false;
     }
 
@@ -307,12 +314,12 @@ bool BasicModel::LoadNetwork(
     // if using DLA, set the desired core before deserialization occurs
     if( device == DEVICE_DLA_0 )
     {
-        printf(LOG_TRT "enabling DLA core 0\n");
+        spdlog::info(LOG_TRT "enabling DLA core 0");
         infer->setDLACore(0);
     }
     else if( device == DEVICE_DLA_1 )
     {
-        printf(LOG_TRT "enabling DLA core 1\n");
+        spdlog::info(LOG_TRT "enabling DLA core 1");
         infer->setDLACore(1);
     }
 
@@ -324,20 +331,20 @@ bool BasicModel::LoadNetwork(
 
     if( !modelMem )
     {
-        printf(LOG_TRT "failed to allocate %i bytes to deserialize model\n", length);
+        spdlog::error(LOG_TRT "failed to allocate {} bytes to deserialize model", length);
         return false;
     }
 
     cache.read((char*)modelMem, length);
     cache.close();
-    printf(LOG_TRT "device %s loaded\n", model_path.c_str());
+    spdlog::info(LOG_TRT "device {} loaded", model_path.c_str());
 
     nvinfer1::ICudaEngine* engine = infer->deserializeCudaEngine(modelMem, length, nullptr);
     free(modelMem);
 
     if( !engine )
     {
-        printf(LOG_TRT "failed to create CUDA engine\n");
+        spdlog::error(LOG_TRT "failed to create CUDA engine");
         return false;
     }
 
@@ -345,11 +352,11 @@ bool BasicModel::LoadNetwork(
 
     if( !context )
     {
-        printf(LOG_TRT "failed to create execution context\n");
+        spdlog::error(LOG_TRT "failed to create execution context");
         return false;
     }
 
-    printf(LOG_TRT "CUDA engine context initialized with %u bindings\n", engine->getNbBindings());
+    spdlog::info(LOG_TRT "CUDA engine context initialized with {} bindings", engine->getNbBindings());
 
     mInfer   = infer;
     mEngine  = engine;
@@ -363,20 +370,21 @@ bool BasicModel::LoadNetwork(
 
     for( int n=0; n < numBindings; n++ )
     {
-        printf(LOG_TRT "binding -- index   %i\n", n);
+        spdlog::info(LOG_TRT "binding -- index   {}", n);
 
         const char* bind_name = engine->getBindingName(n);
 
-        printf("               -- name    '%s'\n", bind_name);
-        printf("               -- type    %s\n", dataTypeToStr(engine->getBindingDataType(n)));
-        printf("               -- in/out  %s\n", engine->bindingIsInput(n) ? "INPUT" : "OUTPUT");
+        spdlog::info("               -- name    '{}'", bind_name);
+        spdlog::info("               -- type    {}", dataTypeToStr(engine->getBindingDataType(n)));
+        spdlog::info("               -- in/out  {}", engine->bindingIsInput(n) ? "INPUT" : "OUTPUT");
 
         const nvinfer1::Dims bind_dims = engine->getBindingDimensions(n);
 
-        printf("               -- # dims  %i\n", bind_dims.nbDims);
+        spdlog::info("               -- # dims  {}", bind_dims.nbDims);
 
         for( int i=0; i < bind_dims.nbDims; i++ )
-            printf("               -- dim #%i  %i (%s)\n", i, bind_dims.d[i], dimensionTypeToStr(bind_dims.type[i]));
+            spdlog::info("               -- dim #{}  {} ({})\n", i, bind_dims.d[i],
+                    dimensionTypeToStr(bind_dims.type[i]));
     }
 
     /*
@@ -384,12 +392,12 @@ bool BasicModel::LoadNetwork(
      */
     const int inputIndex = engine->getBindingIndex(input_blob.c_str());
 
-    printf(LOG_TRT "binding to input 0 %s  binding index:  %i\n", input_blob.c_str(), inputIndex);
+    spdlog::info(LOG_TRT "binding to input 0 %s  binding index:  {}", input_blob.c_str(), inputIndex);
 
     nvinfer1::Dims inputDims = validateDims(engine->getBindingDimensions(inputIndex));
 
     size_t inputSize = maxBatchSize * DIMS_C(inputDims) * DIMS_H(inputDims) * DIMS_W(inputDims) * sizeof(float);
-    printf(LOG_TRT "binding to input 0 %s  dims (b=%u c=%u h=%u w=%u) size=%zu\n",
+    spdlog::info(LOG_TRT "binding to input 0 {}  dims (b={} c={} h={} w={}) size={}",
            input_blob.c_str(),
            maxBatchSize,
            DIMS_C(inputDims),
@@ -403,7 +411,7 @@ bool BasicModel::LoadNetwork(
      */
     if( !cudaAllocMapped((void**)&mInputCPU, (void**)&mInputCUDA, inputSize) )
     {
-        printf(LOG_TRT "failed to alloc CUDA mapped memory for tensor input, %zu bytes\n", inputSize);
+        spdlog::error(LOG_TRT "failed to alloc CUDA mapped memory for tensor input, {} bytes", inputSize);
         return false;
     }
 
@@ -421,12 +429,14 @@ bool BasicModel::LoadNetwork(
     for( int n=0; n < numOutputs; n++ )
     {
         const int outputIndex = engine->getBindingIndex(output_blobs[n].c_str());
-        printf(LOG_TRT "binding to output %i %s  binding index:  %i\n", n, output_blobs[n].c_str(), outputIndex);
+        spdlog::info(LOG_TRT "binding to output {} {}  binding index:  {}", n, output_blobs[n].c_str(), outputIndex);
 
         nvinfer1::Dims outputDims = validateDims(engine->getBindingDimensions(outputIndex));
 
         size_t outputSize = maxBatchSize * DIMS_C(outputDims) * DIMS_H(outputDims) * DIMS_W(outputDims) * sizeof(float);
-        printf(LOG_TRT "binding to output %i %s  dims (b=%u c=%u h=%u w=%u) size=%zu\n", n, output_blobs[n].c_str(), maxBatchSize, DIMS_C(outputDims), DIMS_H(outputDims), DIMS_W(outputDims), outputSize);
+        spdlog::info(LOG_TRT "binding to output {} {}  dims (b={} c={} h={} w={}) size={}",
+                n, output_blobs[n].c_str(), maxBatchSize, DIMS_C(outputDims),
+                DIMS_H(outputDims), DIMS_W(outputDims), outputSize);
 
         // allocate output memory
         void* outputCPU  = nullptr;
@@ -435,7 +445,7 @@ bool BasicModel::LoadNetwork(
         //if( CUDA_FAILED(cudaMalloc((void**)&outputCUDA, outputSize)) )
         if( !cudaAllocMapped((void**)&outputCPU, (void**)&outputCUDA, outputSize) )
         {
-            printf(LOG_TRT "failed to alloc CUDA mapped memory for tensor output, %zu bytes\n", outputSize);
+            spdlog::error(LOG_TRT "failed to alloc CUDA mapped memory for tensor output, {} bytes", outputSize);
             return false;
         }
 
@@ -464,7 +474,7 @@ bool BasicModel::LoadNetwork(
     mAllowGPUFallback = allowGPUFallback;
 
 
-    printf("%s initialized.\n", mModelPath.c_str());
+    spdlog::info("{} initialized.\n", mModelPath.c_str());
     return true;
 }
 
@@ -496,6 +506,26 @@ void BasicModel::SetStream( cudaStream_t stream )
         return;
 }
 
+cudaError_t BasicModel::setDevice(int device) {
+    int device_count = 0;
+    cudaError_t error = cudaGetDeviceCount(&device_count);
+
+    if(error != cudaSuccess){
+        spdlog::error(LOG_CUDA "Failed to get device count");
+        return error;
+    }
+
+    if(device >= device_count) {
+        spdlog::error(LOG_CUDA "Selected device num is greater than max number of devices");
+        return cudaErrorDevicesUnavailable;
+    }
+
+    error = cudaSetDevice(device);
+    if(error != cudaSuccess){
+        spdlog::error(LOG_CUDA "Failed to set GPU to {%u}", device);
+        return error;
+    }
+}
 
 
 bool DetectNativePrecision( const std::vector<precisionType>& types, precisionType type )
@@ -533,7 +563,7 @@ std::vector<precisionType> DetectNativePrecisions( deviceType device )
 
     if( !builder )
     {
-        printf(LOG_TRT "QueryNativePrecisions() failed to create TensorRT IBuilder instance\n");
+        spdlog::error(LOG_TRT "QueryNativePrecisions() failed to create TensorRT IBuilder instance");
         return types;
     }
 
@@ -557,13 +587,12 @@ std::vector<precisionType> DetectNativePrecisions( deviceType device )
 
     for( uint32_t n=0; n < numTypes; n++ )
     {
-        printf("%s", precisionTypeToStr(types[n]));
+        spdlog::info("{%s}", precisionTypeToStr(types[n]));
 
         if( n < numTypes - 1 )
-            printf(", ");
+            spdlog::info(", ");
     }
 
-    printf("\n");
     builder->destroy();
     return types;
 }
@@ -589,8 +618,15 @@ bool convertONNX(const std::string& modelFile, // name for model
                  bool allowGPUFallback,
                  const deviceType& device,
                  precisionType precision,
-                 const pixelFormat& format)			   // output stream for the GIE model
+                 const pixelFormat& format,
+                 const std::string& logs_path)
 {
+    spdlog::flush_on(spdlog::level::info);
+    if(!logs_path.empty()) {
+        auto rotating_logger = spdlog::rotating_logger_mt("basic_logger", logs_path, 1048576 * 5, 1);
+        spdlog::set_default_logger(rotating_logger);
+        spdlog::set_error_handler([](const std::string &msg) {});
+    }
     // create API root class - must span the lifetime of the engine usage
     nvinfer1::IBuilder* builder = CREATE_INFER_BUILDER(gLogger);
     nvinfer1::INetworkDefinition* network = builder->createNetwork();
@@ -598,20 +634,20 @@ bool convertONNX(const std::string& modelFile, // name for model
     builder->setMinFindIterations(3);	// allow time for TX1 GPU to spin up
     builder->setAverageFindIterations(2);
 
-    printf(LOG_TRT "loading %s\n", modelFile.c_str());
+    spdlog::info(LOG_TRT "loading {%s}", modelFile.c_str());
 
 
     nvonnxparser::IParser* parser = nvonnxparser::createParser(*network, gLogger);
 
     if( !parser )
     {
-        printf(LOG_TRT "failed to create nvonnxparser::IParser instance\n");
+        spdlog::error(LOG_TRT "failed to create nvonnxparser::IParser instance");
         return false;
     }
 
-    if( !parser->parseFromFile(modelFile.c_str(), (int)nvinfer1::ILogger::Severity::kWARNING) )
+    if( !parser->parseFromFile(modelFile.c_str(), (int)nvinfer1::ILogger::Severity::kERROR) )
     {
-        printf(LOG_TRT "failed to parse ONNX model '%s'\n", modelFile.c_str());
+        spdlog::error(LOG_TRT "failed to parse ONNX model '{%s}'", modelFile.c_str());
         return false;
     }
 
@@ -620,7 +656,7 @@ bool convertONNX(const std::string& modelFile, // name for model
 
 
     // build the engine
-    printf(LOG_TRT "configuring CUDA engine\n");
+    spdlog::info(LOG_TRT "configuring CUDA engine");
 
     builder->setMaxBatchSize(maxBatchSize);
     builder->setMaxWorkspaceSize(16 << 20);
@@ -676,19 +712,19 @@ bool convertONNX(const std::string& modelFile, // name for model
 
 
     // build CUDA engine
-    printf(LOG_TRT "building FP16:  %s\n", isFp16Enabled(builder) ? "ON" : "OFF");
-    printf(LOG_TRT "building INT8:  %s\n", isInt8Enabled(builder) ? "ON" : "OFF");
-    printf(LOG_TRT "building CUDA engine (this may take a few minutes the first time a network is loaded)\n");
+    spdlog::info(LOG_TRT "building FP16:  {%s}", isFp16Enabled(builder) ? "ON" : "OFF");
+    spdlog::info(LOG_TRT "building INT8:  {%s}", isInt8Enabled(builder) ? "ON" : "OFF");
+    spdlog::info(LOG_TRT "building CUDA engine (this may take a few minutes the first time a network is loaded)");
 
     nvinfer1::ICudaEngine* engine = builder->buildCudaEngine(*network);
 
     if( !engine )
     {
-        printf(LOG_TRT "failed to build CUDA engine\n");
+        spdlog::error(LOG_TRT "failed to build CUDA engine");
         return false;
     }
 
-    printf(LOG_TRT "completed building CUDA engine\n");
+    spdlog::info(LOG_TRT "completed building CUDA engine");
 
     // we don't need the network definition any more, and we can destroy the parser
     network->destroy();
@@ -697,13 +733,15 @@ bool convertONNX(const std::string& modelFile, // name for model
 
     if( !serMem )
     {
-        printf(LOG_TRT "failed to serialize CUDA engine\n");
+        spdlog::error(LOG_TRT "failed to serialize CUDA engine");
         return false;
     }
 
-    std::string outFile;
-    std::getline(std::stringstream(modelFile), outFile, '.');
-    std::cout << outFile + "_1.engine" << std::endl;
+
+    const size_t idx = modelFile.rfind('.');
+    std::string outFile = modelFile.substr(0, idx);
+
+    spdlog::info("File saved to {}", outFile + "_1.engine");
 
     std::fstream os(outFile + "_1.engine", std::ios::out | std::ios::binary);
     os.write((const char*)serMem->data(), serMem->size());
