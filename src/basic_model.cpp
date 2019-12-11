@@ -623,8 +623,10 @@ bool convertONNX(const std::string& modelFile, // name for model
 {
     spdlog::flush_on(spdlog::level::info);
     if(!logs_path.empty()) {
-        auto rotating_logger = spdlog::rotating_logger_mt("basic_logger", logs_path, 1048576 * 5, 1);
-        spdlog::set_default_logger(rotating_logger);
+        auto logger = spdlog::get("convertion_logger");
+        if (logger == nullptr)
+            logger = spdlog::rotating_logger_mt("convertion_logger", logs_path, 1048576 * 5, 1);
+        spdlog::set_default_logger(logger);
         spdlog::set_error_handler([](const std::string &msg) {});
     }
     // create API root class - must span the lifetime of the engine usage
@@ -741,15 +743,15 @@ bool convertONNX(const std::string& modelFile, // name for model
     const size_t idx = modelFile.rfind('.');
     std::string outFile = modelFile.substr(0, idx);
 
-    spdlog::info("File saved to {}", outFile + "_1.engine");
+    spdlog::info("File saved to {}", outFile + ".engine");
 
-    std::fstream os(outFile + "_1.engine", std::ios::out | std::ios::binary);
+    std::fstream os(outFile + ".engine", std::ios::out | std::ios::binary);
     os.write((const char*)serMem->data(), serMem->size());
     os.close();
 
 
     engine->destroy();
     builder->destroy();
-
+    spdlog::drop_all();
     return true;
 }

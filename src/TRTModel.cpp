@@ -20,8 +20,10 @@ TRTModel::TRTModel(
 {
 
     if(!logs_path.empty()) {
-        auto rotating_logger = spdlog::rotating_logger_mt("basic_logger", logs_path, 1048576 * 5, 1);
-        spdlog::set_default_logger(rotating_logger);
+        auto logger = spdlog::get("basic_logger");
+        if (logger == nullptr)
+            logger = spdlog::rotating_logger_mt("basic_logger", logs_path, 1048576 * 5, 1);
+        spdlog::set_default_logger(logger);
         spdlog::set_error_handler([](const std::string &msg) {});
         spdlog::flush_on(spdlog::level::info);
     }
@@ -51,7 +53,7 @@ TRTModel::~TRTModel() {
     if(!cudaDeallocMapped((void**)imgCPU)){
         spdlog::error("Cant deallocate cuda memory in dtor!");
     }
-
+    spdlog::drop_all();
 }
 
 py::object TRTModel::Apply(py::array_t<uint8_t, py::array::c_style> image)

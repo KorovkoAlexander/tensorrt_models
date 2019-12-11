@@ -3,7 +3,6 @@
 // from https://github.com/dusty-nv/jetson-inference/blob/master/c/imageNet.cu
 //
 #include <Utils.h>
-//#include <iostream>
 
 __global__ void gpuPreImageNetRGB(float2 scale, float3* input, int iWidth, float* output, int oWidth, int oHeight )
 {
