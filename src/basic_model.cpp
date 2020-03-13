@@ -527,20 +527,6 @@ cudaError_t BasicModel::setDevice(int device) {
     }
 }
 
-
-bool DetectNativePrecision( const std::vector<precisionType>& types, precisionType type )
-{
-    const uint32_t numTypes = types.size();
-
-    for( uint32_t n=0; n < numTypes; n++ )
-    {
-        if( types[n] == type )
-            return true;
-    }
-
-    return false;
-}
-
 const char* precisionTypeToStr( precisionType type )
 {
     switch(type)
@@ -551,63 +537,6 @@ const char* precisionTypeToStr( precisionType type )
         case TYPE_FP16:	return "FP16";
         case TYPE_INT8:	return "INT8";
     }
-}
-
-std::vector<precisionType> DetectNativePrecisions( deviceType device )
-{
-    std::vector<precisionType> types;
-    Logger logger;
-
-    // create a temporary builder for querying the supported types
-    nvinfer1::IBuilder* builder = CREATE_INFER_BUILDER(logger);
-
-    if( !builder )
-    {
-        spdlog::error(LOG_TRT "QueryNativePrecisions() failed to create TensorRT IBuilder instance");
-        return types;
-    }
-
-    if( device == DEVICE_DLA_0 || device == DEVICE_DLA_1 )
-        builder->setFp16Mode(true);
-
-    builder->setDefaultDeviceType( deviceTypeToTRT(device) );
-
-    // FP32 is supported on all platforms
-    types.push_back(TYPE_FP32);
-
-    // detect fast (native) FP16
-    if( builder->platformHasFastFp16() )
-        types.push_back(TYPE_FP16);
-
-    if( builder->platformHasFastInt8() )
-        types.push_back(TYPE_INT8);
-
-    // print out supported precisions (optional)
-    const uint32_t numTypes = types.size();
-
-    for( uint32_t n=0; n < numTypes; n++ )
-    {
-        spdlog::info("{%s}", precisionTypeToStr(types[n]));
-
-        if( n < numTypes - 1 )
-            spdlog::info(", ");
-    }
-
-    builder->destroy();
-    return types;
-}
-
-// FindFastestPrecision
-precisionType FindFastestPrecision( deviceType device, bool allowInt8 )
-{
-    std::vector<precisionType> types = DetectNativePrecisions(device);
-
-    if( allowInt8 && DetectNativePrecision(types, TYPE_INT8) )
-        return TYPE_INT8;
-    else if( DetectNativePrecision(types, TYPE_FP16) )
-        return TYPE_FP16;
-    else
-        return TYPE_FP32;
 }
 
 bool convertONNX(const std::string& modelFile, // name for model
@@ -636,7 +565,7 @@ bool convertONNX(const std::string& modelFile, // name for model
     builder->setMinFindIterations(3);	// allow time for TX1 GPU to spin up
     builder->setAverageFindIterations(2);
 
-    spdlog::info(LOG_TRT "loading {%s}", modelFile.c_str());
+    spdlog::info(LOG_TRT "loading {}", modelFile.c_str());
 
 
     nvonnxparser::IParser* parser = nvonnxparser::createParser(*network, gLogger);
@@ -644,12 +573,25 @@ bool convertONNX(const std::string& modelFile, // name for model
     if( !parser )
     {
         spdlog::error(LOG_TRT "failed to create nvonnxparser::IParser instance");
+        network->destroy();
+        builder->destroy();
+        if(CUDA_FAILED(cudaDeviceReset())){
+            spdlog::error("Cant reset the device !");
+        }
+        spdlog::drop_all();
         return false;
     }
 
     if( !parser->parseFromFile(modelFile.c_str(), (int)nvinfer1::ILogger::Severity::kERROR) )
     {
-        spdlog::error(LOG_TRT "failed to parse ONNX model '{%s}'", modelFile.c_str());
+        spdlog::error(LOG_TRT "failed to parse ONNX model '{}'", modelFile.c_str());
+        parser->destroy();
+        network->destroy();
+        builder->destroy();
+        if(CUDA_FAILED(cudaDeviceReset())){
+            spdlog::error("Cant reset the device !");
+        }
+        spdlog::drop_all();
         return false;
     }
 
@@ -665,12 +607,23 @@ bool convertONNX(const std::string& modelFile, // name for model
 
 
     // set up the builder for the desired precision
-    if (precision == TYPE_FASTEST){
-        if(!file_list.empty())
-            precision = FindFastestPrecision(device, true);
-        else
-            precision = FindFastestPrecision(device, false);
+    std::vector<precisionType > precisions = {TYPE_FP32};
+    if(builder->platformHasFastFp16()){
+        precisions.push_back(TYPE_FP16);
     }
+    if(builder->platformHasFastInt8() && !file_list.empty()) {
+        precisions.push_back(TYPE_INT8);
+    }
+
+    precisionType best_precision = precisions[precisions.size() -1];
+
+    if(precision == TYPE_FASTEST){
+        precision = best_precision;
+    } else if (precision >= best_precision){
+        precision = best_precision;
+    }
+
+    spdlog::info(LOG_CUDA "using precision {}", precisionTypeToStr(precision));
 
     if( precision == TYPE_INT8)
     {
@@ -714,8 +667,8 @@ bool convertONNX(const std::string& modelFile, // name for model
 
 
     // build CUDA engine
-    spdlog::info(LOG_TRT "building FP16:  {%s}", isFp16Enabled(builder) ? "ON" : "OFF");
-    spdlog::info(LOG_TRT "building INT8:  {%s}", isInt8Enabled(builder) ? "ON" : "OFF");
+    spdlog::info(LOG_TRT "building FP16:  {}", isFp16Enabled(builder) ? "ON" : "OFF");
+    spdlog::info(LOG_TRT "building INT8:  {}", isInt8Enabled(builder) ? "ON" : "OFF");
     spdlog::info(LOG_TRT "building CUDA engine (this may take a few minutes the first time a network is loaded)");
 
     nvinfer1::ICudaEngine* engine = builder->buildCudaEngine(*network);
@@ -723,6 +676,13 @@ bool convertONNX(const std::string& modelFile, // name for model
     if( !engine )
     {
         spdlog::error(LOG_TRT "failed to build CUDA engine");
+        parser->destroy();
+        network->destroy();
+        builder->destroy();
+        if(CUDA_FAILED(cudaDeviceReset())){
+            spdlog::error("Cant reset the device !");
+        }
+        spdlog::drop_all();
         return false;
     }
 
@@ -736,6 +696,13 @@ bool convertONNX(const std::string& modelFile, // name for model
     if( !serMem )
     {
         spdlog::error(LOG_TRT "failed to serialize CUDA engine");
+        parser->destroy();
+        engine->destroy();
+        builder->destroy();
+        if(CUDA_FAILED(cudaDeviceReset())){
+            spdlog::error("Cant reset the device !");
+        }
+        spdlog::drop_all();
         return false;
     }
 
@@ -749,9 +716,13 @@ bool convertONNX(const std::string& modelFile, // name for model
     os.write((const char*)serMem->data(), serMem->size());
     os.close();
 
-
+    serMem->destroy();
+    parser->destroy();
     engine->destroy();
     builder->destroy();
+    if(CUDA_FAILED(cudaDeviceReset())){
+        spdlog::error("Cant reset the device !");
+    }
     spdlog::drop_all();
     return true;
 }

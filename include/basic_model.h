@@ -60,13 +60,7 @@ struct outputLayer
 
 bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgHeight, const int& batchSize);
 
-bool DetectNativePrecision( const std::vector<precisionType>& types, precisionType type );
-
 const char* precisionTypeToStr( precisionType type );
-
-std::vector<precisionType> DetectNativePrecisions( deviceType device );
-
-precisionType FindFastestPrecision( deviceType device, bool allowInt8 );
 
 bool convertONNX(const std::string& modelFile, // name for model
                  const std::string& file_list,
