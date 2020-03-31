@@ -1,12 +1,12 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.10)
 project(tensorrt_models)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_FLAGS -fPIC)
 
-include_directories(/home/alex/Downloads/TensorRT-5.1.2.2/include)
+include_directories(/home/akorovko/Downloads/TensorRT-7.0.0.11/include)
 
-set(TensorRT_LIBRARIES /home/alex/Downloads/TensorRT-5.1.2.2/lib)
+set(TensorRT_LIBRARIES /home/akorovko/Downloads/TensorRT-7.0.0.11/lib)
 link_directories(${TensorRT_LIBRARIES})
 
 find_package(CUDA REQUIRED)

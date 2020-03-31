@@ -45,7 +45,7 @@ unsigned char* loadImageIO( const char* filename, int* width, int* height, int* 
     }
 
     // validate dimensions for sanity
-    printf( "loaded '%s'  (%i x %i, %i channels)\n", filename, imgWidth, imgHeight, imgChannels);
+//    printf( "loaded '%s'  (%i x %i, %i channels)\n", filename, imgWidth, imgHeight, imgChannels);
 
     if( imgWidth < 0 || imgHeight < 0 || imgChannels < 0 || imgChannels > 4 )
     {
@@ -61,7 +61,7 @@ unsigned char* loadImageIO( const char* filename, int* width, int* height, int* 
     {
         unsigned char* img_org = img;
 
-        printf( "resizing '%s' to %ix%i\n", filename, resizeWidth, resizeHeight);
+//        printf( "resizing '%s' to %ix%i\n", filename, resizeWidth, resizeHeight);
 
         // allocate memory for the resized image
         img = (unsigned char*)malloc(resizeWidth * resizeHeight * imgChannels * sizeof(unsigned char));

@@ -6,6 +6,7 @@
 #define TENSORRT_MODELS_ENTROPYCALIBRATOR_H
 
 #include <NvInfer.h>
+#include <common.h>
 #include <imageIO.h>
 #include <string>
 #include <vector>
@@ -13,6 +14,7 @@
 #include <iostream>
 #include <cuda_runtime.h>
 #include <tuple>
+#include <memory>
 
 enum pixelFormat
 {
@@ -20,17 +22,16 @@ enum pixelFormat
     RGB
 };
 
-class EntropyCalibrator : public nvinfer1::IInt8EntropyCalibrator
+class EntropyCalibrator : public nvinfer1::IInt8EntropyCalibrator2
 {
 public:
     EntropyCalibrator(
+            int max_batch_size,
             const std::string& file_list,
-            const int& width,
-            const int& height,
-            const int& channel,
-            const float3& scale = {256, 256, 256},
-            const float3& shift = {0, 0, 0},
-            const pixelFormat& format = BGR);
+            const Dims& inputDims,
+            const float3& scale = {58.395, 57.12 , 57.375},
+            const float3& shift = {123.675, 116.28 , 103.53 },
+            const pixelFormat& format = RGB);
 
     ~EntropyCalibrator() override ;
 
@@ -45,7 +46,9 @@ public:
 private:
     static std::string calibrationTableName();
     size_t mInputCount1;
-    void* mDeviceInput1{ nullptr };
+    Dims input_dims;
+    void* mDeviceInput1 { nullptr };
+    int max_batch_size;
 
     float3 scale;
     float3 shift;
@@ -54,7 +57,7 @@ private:
     std::string _file_list;
     std::vector<std::string> _fnames;
     float* _batch;
-    nvinfer1::DimsCHW dims;
+//    nvinfer1::DimsCHW dims;
     pixelFormat format;
 };
 

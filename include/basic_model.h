@@ -13,18 +13,13 @@
 #include <map>
 #include <string>
 #include <sstream>
-#include <math.h>
+#include <cmath>
 #include <tuple>
 
 #include <EntropyCalibrator.h>
 
-
-typedef nvinfer1::DimsCHW Dims3;
-typedef nvinfer1::DimsNCHW Dims4;
-
-#define DIMS_C(x) x.d[0]
-#define DIMS_H(x) x.d[1]
-#define DIMS_W(x) x.d[2]
+using Dims3 = nvinfer1::Dims3;
+using Dims4 = nvinfer1::Dims4;
 
 
 #define DEFAULT_MAX_BATCH_SIZE  1
@@ -51,14 +46,10 @@ enum precisionType
 
 struct outputLayer
 {
-    std::string name;
-    Dims3 dims;
-    uint32_t size;
-    float* CPU;
-    float* CUDA;
+    outputLayer(std::unique_ptr<GPUBuffer> memory, Dims dims): memory(std::move(memory)), dims(dims){}
+    Dims dims;
+    std::unique_ptr<GPUBuffer> memory{nullptr};
 };
-
-bool loadImage(uint8_t * img, float3** cpu, const int& imgWidth, const int& imgHeight, const int& batchSize);
 
 const char* precisionTypeToStr( precisionType type );
 
@@ -66,95 +57,48 @@ bool convertONNX(const std::string& modelFile, // name for model
                  const std::string& file_list,
                  const std::tuple<float, float, float>& scale,
                  const std::tuple<float, float, float>& shift,
-                 unsigned int maxBatchSize,			   // batch size - NB must be at least as large as the batch we want to run with
+                 int max_batch_size,			   // batch size - NB must be at least as large as the batch we want to run with
                  bool allowGPUFallback,
                  const deviceType& device = DEVICE_GPU,
                  precisionType precision = TYPE_FP32,
                  const pixelFormat& format = BGR,
                  const std::string& logs_path= {});
 
+void fill_profile(IOptimizationProfile* profile, ITensor* layer, int maxBatchSize);
+
 
 class BasicModel
 {
 public:
-    virtual ~BasicModel();
+    virtual ~BasicModel() = default;
 
-    bool LoadNetwork( const std::string& model,
-                      const std::string& input_blob="data",
-                      const std::string& output_blob="prob",
-                      uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
-                      deviceType device=DEVICE_GPU,
-                      bool allowGPUFallback=true,
-                      cudaStream_t stream=nullptr);
-
-    bool LoadNetwork( const std::string& model,
-                      const std::string& input_blob,
-                      const std::vector<std::string>& output_blobs,
-                      uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
-                      deviceType device=DEVICE_GPU,
-                      bool allowGPUFallback=true,
-                      cudaStream_t stream=nullptr);
-
-    bool LoadNetwork( const std::string& model,
-                      const std::string& input_blob,
-                      const Dims3& input_dims,
-                      const std::vector<std::string>& output_blobs,
-                      uint32_t maxBatchSize=DEFAULT_MAX_BATCH_SIZE,
-                      deviceType device=DEVICE_GPU,
-                      bool allowGPUFallback=true,
-                      cudaStream_t stream=nullptr);
-
-    inline bool AllowGPUFallback() const { return mAllowGPUFallback; }
-
-    inline deviceType GetDevice() const	{ return mDevice; }
-
-    inline outputLayer get_output(const int& n) const { return mOutputs[n];}
-
-    inline cudaStream_t GetStream() const { return mStream; }
-
-    cudaStream_t CreateStream( bool nonBlocking=true );
-
-    void SetStream( cudaStream_t stream );
-
-    inline const char* GetModelPath() const	{ return mModelPath.c_str(); }
+    bool LoadNetwork(const std::string& model);
 
     inline std::map<std::string, uint32_t > getInputDims() const {
-        return {{"width", mWidth}, {"height", mHeight}};
+        return {{"width", input_width}, {"height", input_height}};
     };
 
     std::vector<std::map<std::string, uint32_t >> getOutputDims() const;
 
-    cudaError_t setDevice(int device);
-
 protected:
 
-    BasicModel();
+    BasicModel() = default;
 
 protected:
 
     /* Member Variables */
-    std::string mModelPath;
-    std::string mInputBlobName;
-    std::string mCacheEnginePath;
+    std::string cache_engine_path;
 
-    deviceType    mDevice;
-    cudaStream_t  mStream;
+    std::shared_ptr<nvinfer1::IRuntime> infer {nullptr};
+    std::shared_ptr<nvinfer1::ICudaEngine> engine {nullptr};
+    std::shared_ptr<nvinfer1::IExecutionContext> context {nullptr};
 
-    nvinfer1::IRuntime* mInfer;
-    nvinfer1::ICudaEngine* mEngine;
-    nvinfer1::IExecutionContext* mContext;
+    int input_width=0;
+    int input_height=0;
+    std::unique_ptr<GPUBuffer> input_tensor {nullptr};
+    Dims mInputDims;
 
-    uint32_t mWidth;
-    uint32_t mHeight;
-    uint32_t mInputSize;
-    float*   mInputCPU;
-    float*   mInputCUDA;
-    uint32_t mMaxBatchSize;
-    bool	    mAllowGPUFallback;
-
-    Dims3 mInputDims;
-
-    std::vector<outputLayer> mOutputs;
+    std::vector<outputLayer> output_tensors;
 };
 
 #endif //BASIC_MODEL_H

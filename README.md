@@ -27,11 +27,6 @@ from tensorrt_models import TRTModel
 
 model = TRTModel(
 	model_path = "path to your engine file", #str 
-	input_blob = "input binding name", # str 
-	output_blobs = [list on output binging names], # List[str]
-	scale = (256, 256, 256), # scale image preproc; Tuple[float]
-	shift = (0.5, 0.5, 0.5), #shift image preproc; Tuple[float] 
-	max_batch_size = 1, #int
 	device = 0, #on which GPU to run #int
 	logs_path = "path to logs file" #str
 	)
@@ -42,7 +37,7 @@ img = cv2.imread(img_path)
 img1 = cv2.imread(img_path_1)
 img2 = cv2.imread(img_path_2)
 
-batch = np.stack([img1, img2, img3])
+batch = np.stack([img1, img2, img3]).transpose((0, 3, 1, 2)) # shape = (b, c, h, w)
 outputs = model.apply(batch)
 ```
 Convert model from ONNX into TRT Engine:
@@ -52,13 +47,13 @@ from tensorrt_models import import convertONNX, precisionType, deviceType, pixel
 convertONNX(
 	modelFile = "path to onnx", # str
 	file_list = "path to file with paths for calib images", #str
-	scale = (256, 256, 256), # scale image preproc; Tuple[float]
-	shift = (0.5, 0.5, 0.5), #shift image preproc; Tuple[float]
-    maxBatchSize = 1, # maxBatch;int
+	scale = (58.395, 57.12 , 57.375), # scale image preproc; Tuple[float]
+	shift = (123.675, 116.28 , 103.53), #shift image preproc; Tuple[float]
+    max_batch_size = 1, # maxBatch;int
     allowGPUFallback = True, #allowGPUFallback 
     device = deviceType.DEVICE_GPU, 
     precision = precisionType.TYPE_INT8,
-    format = pixelFormat.BGR,
+    format = pixelFormat.RGB,
     logs_path = "path to logs file" #str)
 ```
 Must know details:

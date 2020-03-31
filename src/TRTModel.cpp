@@ -10,11 +10,6 @@
 
 TRTModel::TRTModel(
         const string& model_path,
-        const string& input_blob,
-        const std::vector<std::string>& output_blobs,
-        const std::tuple<float, float, float>& _scale,
-        const std::tuple<float, float, float>& _shift,
-        uint32_t maxBatchSize,
         const uint8_t& device,
         const string& logs_path)
 {
@@ -24,112 +19,101 @@ TRTModel::TRTModel(
         if (logger == nullptr)
             logger = spdlog::rotating_logger_mt("basic_logger", logs_path, 1048576 * 5, 1);
         spdlog::set_default_logger(logger);
-        spdlog::set_error_handler([](const std::string &msg) {});
-        spdlog::flush_on(spdlog::level::info);
     }
+    spdlog::set_error_handler([](const std::string &msg) {});
+    spdlog::flush_on(spdlog::level::info);
 
     if(CUDA_FAILED(setDevice(device))){
-        throw runtime_error("Fuck! Failed to load the model :(");
+        throw runtime_error("Failed to properly set device");
     }
 
     bool res = LoadNetwork(
-            model_path,
-            input_blob,
-            output_blobs,
-            maxBatchSize);
+            model_path);
     if (!res)
-        throw runtime_error("Fuck! Failed to load the model :(");
+        throw runtime_error("Failed to load the model");
 
-    scale = make_float3(std::get<0>(_scale), std::get<1>(_scale), std::get<2>(_scale));
-    shift = make_float3(std::get<0>(_shift), std::get<1>(_shift), std::get<2>(_shift));
-
-    imgSize = maxBatchSize * DIMS_W(mInputDims) * DIMS_H(mInputDims) * sizeof(float) * 3;
-
-    if( !cudaAllocMapped((void**)&imgCPU, (void**)&imgCUDA, imgSize) )
-        throw runtime_error("Fuck! Failed to allocate zero-copy memory :(");
+    mStream = cudaCreateStream(true);
+    max_batch_size = engine->getMaxBatchSize();
 }
 
-TRTModel::~TRTModel() {
-    if(!cudaDeallocMapped((void**)imgCPU)){
-        spdlog::error("Cant deallocate cuda memory in dtor!");
-    }
-    spdlog::drop_all();
-}
 
-py::object TRTModel::Apply(py::array_t<uint8_t, py::array::c_style> image)
+py::object TRTModel::Apply(py::array_t<float, py::array::c_style> image)
 {
     py::buffer_info image_info = image.request();
 
     if (image_info.ndim != 4)
-        throw runtime_error("Number of dimentions nums be 4");
+        throw runtime_error("Number of dimensions nums be 4");
 
-    const int imgWidth = DIMS_W(mInputDims);
-    if (imgWidth != image_info.shape[2]){
-        spdlog::error("imgWidth must be equal to {}, but got input is {}", imgWidth, image_info.shape[1]);
+    if (input_width != image_info.shape[3]){
+        spdlog::error("imgWidth must be equal to {}, but got input {}", input_width, image_info.shape[3]);
         return py::none();
     }
 
-    const int imgHeight = DIMS_H(mInputDims);
-    if (imgHeight != image_info.shape[1]){
-        spdlog::error("imgHeight must be equal to {}, but got input is {}", imgHeight, image_info.shape[0]);
+    if (input_height != image_info.shape[2]){
+        spdlog::error("imgHeight must be equal to {}, but got input {}", input_height, image_info.shape[2]);
+        return py::none();
+    }
+
+    if (image_info.shape[1] != 3){
+        spdlog::error("Channels must be equal to 3, but got input {}", image_info.shape[1]);
+        return py::none();
+    }
+
+    if (max_batch_size < image_info.shape[0]){
+        spdlog::error("Batch must be equal or less then {}, but got {}", max_batch_size, image_info.shape[0]);
         return py::none();
     }
 
     const int batchSize = image_info.shape[0];
+    if (!context->allInputDimensionsSpecified())
+        context->setBindingDimensions(0, Dims4{batchSize, 3, input_height, input_width});
 
-    if(! loadImage((uint8_t *)image_info.ptr, (float3**)&imgCPU, imgWidth, imgHeight, batchSize)){
-        spdlog::error("Cant properly read numpy buffer :(");
-        return py::none();
-    }
-
-    if( !imgCPU || imgWidth == 0 || imgHeight == 0)
-    {
-        spdlog::error("TRTModel::Apply( {}, {} ) -> invalid parameters", imgWidth, imgHeight);
-        return py::none();
-    }
-
-    // downsample and convert to band-sequential BGR
-    if( CUDA_FAILED(
-            cudaPreImageNetScaleShiftRGB(
-                    (float3*)imgCPU,
-                    imgWidth,
-                    imgHeight,
-                    mInputCUDA,
-                    mWidth,
-                    mHeight,
-                    batchSize,
-                    scale,
-                    shift,
-                    GetStream())
-                    ))
-    {
-        spdlog::error("TRTModel::Apply() -- cudaPreImageNet failed");
+    if(CUDA_FAILED(cudaMemcpy(
+            input_tensor->ptr(),
+            image_info.ptr,
+            image_info.size * sizeof(float),
+            cudaMemcpyHostToDevice))){
+        spdlog::error(LOG_CUDA "Failed to copy memory to device!");
         return py::none();
     }
 
     // process with GIE
-//    void* inferenceBuffers[] = {mInputCUDA, mOutputs[OUTPUT_HEATMAP].CUDA, mOutputs[OUTPUT_PAF].CUDA};
-    vector<void*> inferenceBuffers = {mInputCUDA};
-    inferenceBuffers.reserve(mOutputs.size() + 1);
-    for(const auto& x: mOutputs){
-        inferenceBuffers.push_back(x.CUDA);
+    vector<void*> inferenceBuffers = {input_tensor->ptr()};
+    inferenceBuffers.reserve(output_tensors.size() + 1);
+    for(const auto& x: output_tensors){
+        inferenceBuffers.push_back(x.memory->ptr());
     }
-    const bool result = mContext->enqueue(/*batchsize*/  batchSize, inferenceBuffers.data(), GetStream(), nullptr);
+
+    const bool result = context->enqueueV2(
+            inferenceBuffers.data(),
+            mStream,
+            nullptr);
 
     CUDA(cudaStreamSynchronize(mStream));
 
     if(!result)
     {
-        spdlog::error("TRTModel::Apply() -- failed to execute tensorRT context");
+        spdlog::error(LOG_TRT "failed to execute tensorRT context");
         return py::none();
     }
 
+
     vector<py::array_t<float >> list_outputs;
-    list_outputs.reserve(mOutputs.size());
-    for(const auto& x: mOutputs){
-        py::array_t<float> out = py::array_t<float>(x.size/sizeof(float));
+    list_outputs.reserve(output_tensors.size());
+    for(const auto& x: output_tensors){
+        size_t mem_size = x.memory->get_size() * batchSize / max_batch_size;
+        py::array_t<float> out = py::array_t<float>(mem_size/sizeof(float));
         py::buffer_info out_info = out.request();
-        memcpy(out_info.ptr, x.CPU, x.size);
+        if(CUDA_FAILED(cudaMemcpy(
+                out_info.ptr,
+                x.memory->ptr(),
+                mem_size,
+                cudaMemcpyDeviceToHost))){
+            spdlog::error(LOG_CUDA "Failed to copy memory to device!");
+            return py::none();
+        }
+
+
         list_outputs.push_back(move(out));
     }
     return py::cast(list_outputs);
@@ -157,26 +141,19 @@ PYBIND11_MODULE(tensorrt_models, m){
     m.def("convertONNX", &convertONNX, "convert ONNX model into engine file",
             py::arg("modelFile"),
             py::arg("file_list") = "",
-            py::arg("scale") = std::tuple<float, float, float>(256, 256, 256),
-            py::arg("shift") = std::tuple<float, float, float>(0.5, 0.5, 0.5),
-            py::arg("maxBatchSize") = 1,
+            py::arg("scale") = std::tuple<float, float, float>(58.395, 57.12 , 57.375),
+            py::arg("shift") = std::tuple<float, float, float>(123.675, 116.28 , 103.53),
+            py::arg("max_batch_size") = 1,
             py::arg("allowGPUFallback") = true,
             py::arg("device") = DEVICE_GPU,
             py::arg("precision") = TYPE_FP32,
-            py::arg("format") = BGR,
+            py::arg("format") = RGB,
             py::arg("logs_path") = "");
 
     py::class_<TRTModel>(m, "TRTModel")
-            .def(py::init<const string&, const string&, const vector<string>&,
-                    const std::tuple<float, float, float>& ,
-                    const std::tuple<float, float, float>&,
-                    uint32_t, const uint8_t &, const string&>(),
+            .def(py::init<const string&,
+                    const uint8_t &, const string&>(),
                     py::arg("model_path"),
-                    py::arg("input_blob"),
-                    py::arg("output_blobs"),
-                    py::arg("scale") = std::tuple<float, float, float>(256, 256, 256),
-                    py::arg("shift") = std::tuple<float, float, float>(0.5, 0.5, 0.5),
-                    py::arg("max_batch_size") = 1,
                     py::arg("device") = 0,
                     py::arg("logs_path") = "")
             .def("apply", &TRTModel::Apply)

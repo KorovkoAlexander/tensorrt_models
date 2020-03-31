@@ -58,12 +58,12 @@ class CMakeBuild(build_ext):
 
 setup(
     name='tensorrt_models',
-    version='0.0.1',
+    version='1.0.0',
     author='Alex Korovko',
     author_email='1a2w3d4r@mail.ru',
-    description='Openpose model with pybind11 and tensorrt',
+    description='Nvidia NN Inference',
     long_description='',
     ext_modules=[CMakeExtension('tensorrt_models')],
     cmdclass=dict(build_ext=CMakeBuild),
-    zip_safe=False,
+    zip_safe=False
 )
