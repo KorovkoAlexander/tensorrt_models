@@ -57,8 +57,8 @@ convertONNX(
     logs_path = "path to logs file" #str)
 ```
 Must know details:
->- Scale and Shift are used to make image preprocessing. Finally **float(image)/scale - shift** is fed into the network. The order of coeffs in this vectors (scale and shift) **must** correspont to input image format i.e. RGB. (None that openCV usually opens images as BGR).
 >- Make sure that you **callibrate** your model in the **appropraite pixel format**. If you trained your net in RGB mode, the same format should be used during callibration.
+>- Scale and Shift are used to make image preprocessing during calibration. Finally **(image - shift)/scale** is fed into the network. The order of coeffs in this vectors (scale and shift) **must** correspont to input image format i.e. RGB. (None that openCV usually opens images as BGR).
 >- To calibrate the model you need to create a file, containing paths to calibation images, and provide a path to this file.
 
 
