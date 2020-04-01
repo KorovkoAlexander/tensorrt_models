@@ -21,6 +21,10 @@ Build Instructions
 > 4) Open CmakeLists.txt and Change TensorRT include and lib paths.
 > 5) pip install .
 
+Prebuild packages
+----------------
+[Prebuild](https://github.com/KorovkoAlexander/tensorrt_models/issues/1#issue-591786674)
+
 Then you can:
 ```
 from tensorrt_models import TRTModel
