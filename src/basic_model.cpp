@@ -104,7 +104,7 @@ bool BasicModel::LoadNetwork(
     cache.close();
     spdlog::info(LOG_TRT "device {} loaded", model_path.c_str());
 
-    infer = MakeShared(createInferRuntime(gLogger));
+    infer = makeObjGuard<IRuntime>(createInferRuntime(gLogger));
 
     if( !infer )
     {
@@ -112,7 +112,7 @@ bool BasicModel::LoadNetwork(
         return false;
     }
 
-    engine = MakeShared(infer->deserializeCudaEngine(modelMem.get(), length, nullptr));
+    engine = makeObjGuard<ICudaEngine>(infer->deserializeCudaEngine(modelMem.get(), length, nullptr));
     std::size_t maxBatchSize = engine->getMaxBatchSize();
 
     if( !engine )
@@ -121,7 +121,7 @@ bool BasicModel::LoadNetwork(
         return false;
     }
 
-    context = MakeShared(engine->createExecutionContext());
+    context = makeObjGuard<IExecutionContext>(engine->createExecutionContext());
     if( !context )
     {
         spdlog::error(LOG_TRT "failed to create execution context");

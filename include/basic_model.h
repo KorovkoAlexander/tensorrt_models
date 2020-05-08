@@ -66,11 +66,19 @@ bool convertONNX(const std::string& modelFile, // name for model
 
 void fill_profile(IOptimizationProfile* profile, ITensor* layer, int maxBatchSize);
 
+class Base{
+public:
+    virtual ~Base(){
+        if(CUDA_FAILED(cudaDeviceReset())){
+            spdlog::error("failed to reset the device");
+        }
+    }
+};
 
-class BasicModel
+class BasicModel: public Base
 {
 public:
-    virtual ~BasicModel() = default;
+    ~BasicModel() override = default;
 
     bool LoadNetwork(const std::string& model);
 
@@ -89,16 +97,15 @@ protected:
     /* Member Variables */
     std::string cache_engine_path;
 
-    std::shared_ptr<nvinfer1::IRuntime> infer {nullptr};
-    std::shared_ptr<nvinfer1::ICudaEngine> engine {nullptr};
-    std::shared_ptr<nvinfer1::IExecutionContext> context {nullptr};
-
     int input_width=0;
     int input_height=0;
-    std::unique_ptr<GPUBuffer> input_tensor {nullptr};
     Dims mInputDims;
 
     std::vector<outputLayer> output_tensors;
+    std::unique_ptr<GPUBuffer> input_tensor {nullptr};
+    std::unique_ptr<IRuntime, void (*)(IRuntime* obj)> infer{nullptr, nullptr};
+    std::unique_ptr<ICudaEngine, void (*)(ICudaEngine* obj)> engine{nullptr, nullptr};
+    std::unique_ptr<IExecutionContext, void (*)(IExecutionContext* obj)> context{nullptr, nullptr};
 };
 
 #endif //BASIC_MODEL_H

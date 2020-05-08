@@ -36,6 +36,11 @@ TRTModel::TRTModel(
     max_batch_size = engine->getMaxBatchSize();
 }
 
+TRTModel::~TRTModel(){
+    if(CUDA_FAILED(cudaStreamDestroy(mStream))){
+        spdlog::error("failed to destroy cuda stream");
+    }
+}
 
 py::object TRTModel::Apply(py::array_t<float, py::array::c_style> image)
 {

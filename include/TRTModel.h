@@ -29,7 +29,7 @@ public:
 
     py::object Apply(py::array_t<float, py::array::c_style> image);
 
-    ~TRTModel() override = default;
+    ~TRTModel() override;
 };
 
 #endif //TRTMODEL_H
