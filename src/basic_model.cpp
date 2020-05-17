@@ -225,7 +225,44 @@ void fill_profile(IOptimizationProfile* profile, ITensor* layer, int maxBatchSiz
     profile->setDimensions(layer->getName(), OptProfileSelector::kMAX, Dims4{maxBatchSize, c, h, w});
 }
 
-bool convertONNX(const std::string& modelFile, // name for model
+bool check_onnx_support(const string& modelFile){
+    auto builder = makeObjGuard<IBuilder>(createInferBuilder(gLogger));
+    if(!builder){
+        throw runtime_error("failed to create builder");
+    }
+    builder->setMaxBatchSize(1);
+
+    const auto explicit_batch = 1U << static_cast<uint32_t>(NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+    auto network = makeObjGuard<INetworkDefinition>(builder->createNetworkV2(explicit_batch));
+    if(!network){
+        throw runtime_error("failed to create Network");
+    }
+
+    auto parser = makeObjGuard<nvonnxparser::IParser>(nvonnxparser::createParser(*network, gLogger));
+
+    if( !parser )
+        throw runtime_error("failed to create ONNX Parser instance");
+
+
+    std::ifstream cache(modelFile, std::ios::in | std::ios::binary);
+    if( !cache )
+        throw runtime_error("Cant open ONNX file");
+
+    cache.seekg(0, cache.end);
+    const int length = cache.tellg();
+    cache.seekg(0, cache.beg);
+
+    auto modelMem = make_unique<char[]>(length);
+//    char* modelMem = (char*)malloc(length);
+
+    cache.read(modelMem.get(), length);
+    cache.close();
+
+    SubGraphCollection_t sub_graph;
+    return parser->supportsModel((void const *)modelMem.get(), length, sub_graph);;
+}
+
+bool _convertONNX(const std::string& modelFile, // name for model
                  const std::string& file_list,
                  const std::tuple<float, float, float>& scale,
                  const std::tuple<float, float, float>& shift,
@@ -233,23 +270,13 @@ bool convertONNX(const std::string& modelFile, // name for model
                  bool allowGPUFallback,
                  const deviceType& device,
                  precisionType precision,
-                 const pixelFormat& format,
-                 const std::string& logs_path)
+                 const pixelFormat& format)
 {
-    spdlog::flush_on(spdlog::level::info);
-    if(!logs_path.empty()) {
-        auto logger = spdlog::get("convertion_logger");
-        if (logger == nullptr)
-            logger = spdlog::rotating_logger_mt("convertion_logger", logs_path, 1048576 * 5, 1);
-        spdlog::set_default_logger(logger);
-        spdlog::set_error_handler([](const std::string &msg) {});
-    }
     // create API root class - must span the lifetime of the engine usage
     spdlog::info(LOG_TRT "creating builder");
     auto builder = makeObjGuard<IBuilder>(createInferBuilder(gLogger));
     if(!builder){
-        spdlog::error(LOG_TRT "failed to create builder");
-        return false;
+        throw runtime_error("failed to create builder");
     }
     builder->setMaxBatchSize(max_batch_size);
 
@@ -257,8 +284,7 @@ bool convertONNX(const std::string& modelFile, // name for model
     const auto explicit_batch = 1U << static_cast<uint32_t>(NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
     auto network = makeObjGuard<INetworkDefinition>(builder->createNetworkV2(explicit_batch));
     if(!network){
-        spdlog::error(LOG_TRT "failed to create Network");
-        return false;
+        throw runtime_error("failed to create Network");
     }
 
     spdlog::info(LOG_TRT "loading {}", modelFile.c_str());
@@ -266,17 +292,11 @@ bool convertONNX(const std::string& modelFile, // name for model
     auto parser = makeObjGuard<nvonnxparser::IParser>(nvonnxparser::createParser(*network, gLogger));
 
     if( !parser )
-    {
-        spdlog::error(LOG_TRT "failed to create ONNX Parser instance");
-        return false;
-    }
+        throw runtime_error("failed to create ONNX Parser instance");
 
     bool parsed = parser->parseFromFile(modelFile.c_str(), (int)ILogger::Severity::kERROR);
     if( !parsed)
-    {
-        spdlog::error(LOG_TRT "failed to parse ONNX model '{}'", modelFile.c_str());
-        return false;
-    }
+        throw runtime_error("failed to parse ONNX model");
 
     spdlog::info(LOG_TRT "filling optimization profile");
     auto profile = builder->createOptimizationProfile();
@@ -288,8 +308,7 @@ bool convertONNX(const std::string& modelFile, // name for model
 
     auto config = makeObjGuard<IBuilderConfig>(builder->createBuilderConfig());
     if(! config){
-        spdlog::error(LOG_TRT "failed to create config for model '{}'", modelFile.c_str());
-        return false;
+        throw runtime_error("failed to create config for model");
     }
     config->setMinTimingIterations(3);
     config->setAvgTimingIterations(2);
@@ -350,8 +369,7 @@ bool convertONNX(const std::string& modelFile, // name for model
 
     if( !engine )
     {
-        spdlog::error(LOG_TRT "failed to build CUDA engine");
-        return false;
+        throw runtime_error("failed to build CUDA engine");
     }
 
     spdlog::info(LOG_TRT "completed building CUDA engine");
@@ -359,8 +377,7 @@ bool convertONNX(const std::string& modelFile, // name for model
 
     if( !serMem )
     {
-        spdlog::error(LOG_TRT "failed to serialize CUDA engine");
-        return false;
+        throw runtime_error("failed to serialize CUDA engine");
     }
 
 
@@ -372,4 +389,43 @@ bool convertONNX(const std::string& modelFile, // name for model
     std::fstream os(outFile + ".engine", std::ios::out | std::ios::binary);
     os.write((const char*)serMem->data(), serMem->size());
     return true;
+}
+
+bool convertONNX(const std::string& modelFile, // name for model
+                 const std::string& file_list,
+                 const std::tuple<float, float, float>& scale,
+                 const std::tuple<float, float, float>& shift,
+                 int max_batch_size,			   // batch size - NB must be at least as large as the batch we want to run with
+                 bool allowGPUFallback,
+                 const deviceType& device,
+                 precisionType precision,
+                 const pixelFormat& format,
+                 const std::string& logs_path){
+    spdlog::flush_on(spdlog::level::info);
+    if(!logs_path.empty()) {
+        auto logger = spdlog::get("convertion_logger");
+        if (logger == nullptr)
+            logger = spdlog::rotating_logger_mt("convertion_logger", logs_path, 1048576 * 5, 1);
+        spdlog::set_default_logger(logger);
+        spdlog::set_error_handler([](const std::string &msg) {});
+    }
+
+    bool ret;
+    try{
+        bool supported = check_onnx_support(modelFile);
+        if( !supported )
+            throw runtime_error("Such ONNX is not supported by TRT");
+
+        ret = _convertONNX(modelFile, file_list, scale, shift, max_batch_size,
+                     allowGPUFallback, device, precision, format);
+    } catch (exception& e) {
+        spdlog::error(e.what());
+        ret = false;
+    }
+
+    if(CUDA_FAILED(cudaDeviceReset())){
+        spdlog::error("failed to reset the device");
+    }
+    return ret;
+
 }
