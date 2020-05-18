@@ -56,7 +56,7 @@ private:
     int _cur_id;
     std::string _file_list;
     std::vector<std::string> _fnames;
-    float* _batch;
+    float* _batch = nullptr;
 //    nvinfer1::DimsCHW dims;
     pixelFormat format;
 };

@@ -388,6 +388,7 @@ bool _convertONNX(const std::string& modelFile, // name for model
 
     std::fstream os(outFile + ".engine", std::ios::out | std::ios::binary);
     os.write((const char*)serMem->data(), serMem->size());
+    os.close();
     return true;
 }
 
