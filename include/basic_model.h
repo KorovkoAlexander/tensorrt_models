@@ -46,9 +46,9 @@ enum precisionType
 
 struct outputLayer
 {
-    outputLayer(std::unique_ptr<GPUBuffer> memory, Dims dims): memory(std::move(memory)), dims(dims){}
+    outputLayer(std::unique_ptr<MemoryMapped> memory, Dims dims): memory(std::move(memory)), dims(dims){}
     Dims dims;
-    std::unique_ptr<GPUBuffer> memory{nullptr};
+    std::unique_ptr<MemoryMapped> memory{nullptr};
 };
 
 const char* precisionTypeToStr( precisionType type );
@@ -102,7 +102,7 @@ protected:
     Dims mInputDims;
 
     std::vector<outputLayer> output_tensors;
-    std::unique_ptr<GPUBuffer> input_tensor {nullptr};
+    std::unique_ptr<MemoryMapped> input_tensor {nullptr};
     std::unique_ptr<IRuntime, void (*)(IRuntime* obj)> infer{nullptr, nullptr};
     std::unique_ptr<ICudaEngine, void (*)(ICudaEngine* obj)> engine{nullptr, nullptr};
     std::unique_ptr<IExecutionContext, void (*)(IExecutionContext* obj)> context{nullptr, nullptr};

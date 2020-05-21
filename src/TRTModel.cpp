@@ -73,20 +73,14 @@ py::object TRTModel::Apply(py::array_t<float, py::array::c_style> image)
     if (!context->allInputDimensionsSpecified())
         context->setBindingDimensions(0, Dims4{batchSize, 3, input_height, input_width});
 
-    if(CUDA_FAILED(cudaMemcpy(
-            input_tensor->ptr(),
-            image_info.ptr,
-            image_info.size * sizeof(float),
-            cudaMemcpyHostToDevice))){
-        spdlog::error(LOG_CUDA "Failed to copy memory to device!");
-        return py::none();
-    }
+    memcpy(input_tensor->host(), image_info.ptr,
+           image_info.size * sizeof(float));
 
     // process with GIE
-    vector<void*> inferenceBuffers = {input_tensor->ptr()};
+    vector<void*> inferenceBuffers = {input_tensor->device()};
     inferenceBuffers.reserve(output_tensors.size() + 1);
     for(const auto& x: output_tensors){
-        inferenceBuffers.push_back(x.memory->ptr());
+        inferenceBuffers.push_back(x.memory->device());
     }
 
     const bool result = context->enqueueV2(
@@ -109,14 +103,7 @@ py::object TRTModel::Apply(py::array_t<float, py::array::c_style> image)
         size_t mem_size = x.memory->get_size() * batchSize / max_batch_size;
         py::array_t<float> out = py::array_t<float>(mem_size/sizeof(float));
         py::buffer_info out_info = out.request();
-        if(CUDA_FAILED(cudaMemcpy(
-                out_info.ptr,
-                x.memory->ptr(),
-                mem_size,
-                cudaMemcpyDeviceToHost))){
-            spdlog::error(LOG_CUDA "Failed to copy memory to device!");
-            return py::none();
-        }
+        memcpy(out_info.ptr, x.memory->host(), mem_size);
 
 
         list_outputs.push_back(move(out));

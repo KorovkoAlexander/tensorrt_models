@@ -234,46 +234,28 @@ class MemoryMapped
 public:
     explicit MemoryMapped(std::size_t size): size(size)
     {
-        gpuMem = safeCudaMalloc(size);
-        cpuMem = malloc(size);
-        if(cpuMem == nullptr){
-            spdlog::error("[MEM] " "Filed to allocate cpu mem, {} bytes", size);
-            exit(-1);
+        if(CUDA_FAILED(cudaHostAlloc(&pHost, size, cudaHostAllocMapped))){
+            throw std::runtime_error("failed to allocate mapped memory");
         }
+
+        if(CUDA_FAILED(cudaHostGetDevicePointer(&pDevice, pHost, 0))){
+            throw std::runtime_error("Cant get device memory");
+        }
+
     };
     ~MemoryMapped()
     {
-        safeCudaDealloc(gpuMem);
-        free(cpuMem);
-    }
-
-    void copy(cudaMemcpyKind kind){
-        void* ptr1;
-        void* ptr2;
-        switch(kind){
-            case cudaMemcpyHostToDevice:
-                ptr1 = gpuMem;
-                ptr2 = cpuMem;
-                break;
-            case cudaMemcpyDeviceToHost:
-                ptr1 = cpuMem;
-                ptr2 = gpuMem;
-                break;
-            default:
-                spdlog::error(LOG_CUDA "MemCpy: Bad argument provided");
-                exit(-1);
-        }
-        if(CUDA_FAILED(cudaMemcpy(ptr1, ptr2, size, kind))){
-            spdlog::error(LOG_CUDA "Failed to copy mammed memory^(");
-            exit(-1);
+        if(CUDA_FAILED(cudaFreeHost(pHost))){
+            throw std::runtime_error("failed to deallocate mapped memory");
         }
     }
 
-    void* cpu() const{
-        return cpuMem;
+    void* host() const{
+        return pHost;
     }
-    void* gpu() const{
-        return gpuMem;
+
+    void* device() const{
+        return pDevice;
     }
 
     size_t get_size() const{
@@ -281,9 +263,9 @@ public:
     }
 
 private:
-    void* cpuMem;
-    void* gpuMem;
-    size_t size;
+    void* pHost= nullptr;
+    void* pDevice= nullptr;
+    const size_t size;
 };
 
 

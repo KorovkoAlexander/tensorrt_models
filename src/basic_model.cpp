@@ -171,7 +171,7 @@ bool BasicModel::LoadNetwork(
                 spdlog::error("Engine must have only one input binding!");
                 exit(-1);
             }
-            input_tensor = make_unique<GPUBuffer>(inputSize);
+            input_tensor = make_unique<MemoryMapped>(inputSize);
 
             input_width        = DIMS_W(inputDims);
             input_height       = DIMS_H(inputDims);
@@ -187,7 +187,7 @@ bool BasicModel::LoadNetwork(
                          DIMS_H(outputDims), DIMS_W(outputDims), outputSize);
 
             output_tensors.push_back({
-                make_unique<GPUBuffer>(outputSize),
+                make_unique<MemoryMapped>(outputSize),
                 outputDims
             });
         }
