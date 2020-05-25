@@ -71,8 +71,10 @@ bool BasicModel::LoadNetwork(
 
         loadedPlugins = initLibNvInferPlugins(&gLogger, "");
 
-        if( !loadedPlugins )
+        if( !loadedPlugins ) {
             spdlog::error(LOG_TRT "failed to load NVIDIA plugins");
+            return false;
+        }
         else
             spdlog::info(LOG_TRT "completed loading NVIDIA plugins");
     }
