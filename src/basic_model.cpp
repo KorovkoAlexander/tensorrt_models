@@ -112,7 +112,12 @@ bool BasicModel::LoadNetwork(
         return false;
     }
 
-    engine = makeObjGuard<ICudaEngine>(infer->deserializeCudaEngine(modelMem.get(), length, nullptr));
+    ICudaEngine* temp_engine = infer->deserializeCudaEngine(modelMem.get(), length, nullptr);
+    if(temp_engine == nullptr){
+        spdlog::error(LOG_TRT "unsupported model file was provided!");
+        return false;
+    }
+    engine = makeObjGuard<ICudaEngine>(temp_engine);
     std::size_t maxBatchSize = engine->getMaxBatchSize();
 
     if( !engine )
