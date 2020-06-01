@@ -67,22 +67,25 @@ py::object TRTModel::Apply(py::array_t<float, py::array::c_style> image)
 
     if (input_width != image_info.shape[3]){
         spdlog::error("imgWidth must be equal to {}, but got input {}", input_width, image_info.shape[3]);
-        return py::none();
+        throw runtime_error("imgWidth must be equal to " + to_string(input_width) +
+                            ", but got input " + to_string(image_info.shape[3]));
     }
 
     if (input_height != image_info.shape[2]){
         spdlog::error("imgHeight must be equal to {}, but got input {}", input_height, image_info.shape[2]);
-        return py::none();
+        throw runtime_error("imgHeight must be equal to " + to_string(input_height) +
+                                ", but got input " + to_string(image_info.shape[2]));
     }
 
     if (image_info.shape[1] != 3){
         spdlog::error("Channels must be equal to 3, but got input {}", image_info.shape[1]);
-        return py::none();
+        throw runtime_error("Channels must be equal to 3, but got input " + to_string(image_info.shape[1]));
     }
 
     if (max_batch_size < image_info.shape[0]){
         spdlog::error("Batch must be equal or less then {}, but got {}", max_batch_size, image_info.shape[0]);
-        return py::none();
+        throw runtime_error("Batch must be equal or less then " + to_string(max_batch_size) +
+                                ", but got " + to_string(image_info.shape[0]));
     }
 
     const int batchSize = image_info.shape[0];
