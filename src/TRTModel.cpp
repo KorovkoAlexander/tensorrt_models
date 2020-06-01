@@ -4,6 +4,7 @@
 
 #include "TRTModel.h"
 #include <cudaMappedMemory.h>
+#include <pybind11/numpy.h>
 
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -34,6 +35,21 @@ TRTModel::TRTModel(
 
     mStream = cudaCreateStream(true);
     max_batch_size = engine->getMaxBatchSize();
+
+    //apply test image for initialization
+    py::array::ShapeContainer shape({
+        static_cast<long>(max_batch_size),
+        3, input_height, input_width
+    });
+
+    py::array::StridesContainer strides({
+        static_cast<long>(max_batch_size)*input_width*input_height*3*8,
+        input_width*input_height*3*8,
+        input_width*input_height*8,
+        input_width*8,
+    }); //strides in bytes(like in regular numpy array)
+    auto test_buffer = py::array_t<float, py::array::c_style>(shape, strides);
+    auto ret = Apply(test_buffer);
 }
 
 TRTModel::~TRTModel(){
