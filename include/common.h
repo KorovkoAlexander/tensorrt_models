@@ -246,7 +246,8 @@ public:
     ~MemoryMapped()
     {
         if(CUDA_FAILED(cudaFreeHost(pHost))){
-            throw std::runtime_error("failed to deallocate mapped memory");
+            spdlog::error("failed to deallocate mapped memory");
+            exit(-1);
         }
     }
 
