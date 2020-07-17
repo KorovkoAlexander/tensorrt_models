@@ -4,9 +4,9 @@ project(tensorrt_models)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_FLAGS -fPIC)
 
-include_directories(/home/akorovko/Downloads/TensorRT-7.0.0.11/include)
+include_directories(/home/akorovko/Downloads/TensorRT-7.1.3.4/include)
 
-set(TensorRT_LIBRARIES /home/akorovko/Downloads/TensorRT-7.0.0.11/lib)
+set(TensorRT_LIBRARIES /home/akorovko/Downloads/TensorRT-7.1.3.4/lib)
 link_directories(${TensorRT_LIBRARIES})
 
 find_package(CUDA REQUIRED)

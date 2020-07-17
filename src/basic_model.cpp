@@ -348,8 +348,7 @@ bool _convertONNX(const std::string& modelFile, // name for model
     }
 
     spdlog::info(LOG_CUDA "using precision {}", precisionTypeToStr(precision));
-    if(precision != TYPE_INT8)
-        config->addOptimizationProfile(profile);
+    config->addOptimizationProfile(profile);
 
     if (precision == TYPE_FP16)
     {
