@@ -120,10 +120,23 @@ py::object TRTModel::Apply(py::array_t<float, py::array::c_style> image)
     list_outputs.reserve(output_tensors.size());
     for(const auto& x: output_tensors){
         size_t mem_size = x.memory->get_size() * batchSize / max_batch_size;
+
+        vector<int> shapes(x.dims.d, x.dims.d + x.dims.nbDims);
+        if(shapes[0] < 0) // check batch size
+            shapes[0] = batchSize;
+        if(count_if(shapes.begin(), shapes.end(), [](const int& x){return x <= 0;}) > 0) {
+            spdlog::error(LOG_TRT "One of output shape dimensions occurred to be less or equal to zero");
+            for(const int& x: shapes){
+                spdlog::error(LOG_TRT "shape: {}", x);
+            }
+            throw runtime_error("One of output shape dimensions occurred to be less or equal to zero");
+        }
+        py::array::ShapeContainer shape(shapes);
+
         py::array_t<float> out = py::array_t<float>(mem_size/sizeof(float));
+        out.resize(shape);
         py::buffer_info out_info = out.request();
         memcpy(out_info.ptr, x.memory->host(), mem_size);
-
 
         list_outputs.push_back(move(out));
     }
