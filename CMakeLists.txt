@@ -2,7 +2,12 @@ cmake_minimum_required(VERSION 3.10)
 project(tensorrt_models)
 
 set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_FLAGS -fPIC)
+
+if (UNIX)
+    set(CMAKE_CXX_FLAGS "-fPIC -O3")
+else()
+    set(CMAKE_CXX_FLAGS "-O3")
+endif (UNIX)
 
 include_directories(/home/akorovko/Downloads/TensorRT-7.1.3.4/include)
 
