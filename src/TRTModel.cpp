@@ -126,8 +126,8 @@ py::object TRTModel::Apply(py::array_t<float, py::array::c_style> image)
             shapes[0] = batchSize;
         if(count_if(shapes.begin(), shapes.end(), [](const int& x){return x <= 0;}) > 0) {
             spdlog::error(LOG_TRT "One of output shape dimensions occurred to be less or equal to zero");
-            for(const int& x: shapes){
-                spdlog::error(LOG_TRT "shape: {}", x);
+            for(const int& _x: shapes){
+                spdlog::error(LOG_TRT "shape: {}", _x);
             }
             throw runtime_error("One of output shape dimensions occurred to be less or equal to zero");
         }

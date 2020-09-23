@@ -18,9 +18,11 @@ find_package(CUDA REQUIRED)
 
 if (CUDA_FOUND)
     message("CUDA found")
+    set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS}; "-gencode arch=compute_75,code=sm_75")
 else()
     message("CUDA not found, doing something alternatively")
 endif()
+
 include_directories(${CUDA_INCLUDE_DIRS})
 
 file(GLOB cudaSources cuda/*.cu src/*.cu)
