@@ -7,7 +7,7 @@ This project is aimed at providing fast inference for NN with tensorRT through i
 [GoogleDrive](https://drive.google.com/open?id=1mdh9E0s5SNf48scuUvrheff345cOfaRf)
 
 #### Important
-Currently CUDA 10.2, TensorRT 7.1.3.4 is supported.
+Currently CUDA 10.2, TensorRT 7.1.3.4 and TensorRT 7.2.1.6 is supported.
 
 Build Instructions
 -------------
