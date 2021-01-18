@@ -8,6 +8,7 @@ This project is aimed at providing fast inference for NN with tensorRT through i
 
 #### Important
 Currently CUDA 10.2, TensorRT 7.1.3.4 and TensorRT 7.2.1.6 is supported.
+Also CUDA 11.1 and TensorRT 7.2.2
 
 Build Instructions
 -------------
