@@ -33,7 +33,6 @@ TRTModel::TRTModel(
     if (!res)
         throw runtime_error("Failed to load the model");
 
-    mStream = cudaCreateStream(true);
     max_batch_size = engine->getMaxBatchSize();
 
     //apply test image for initialization
@@ -50,12 +49,6 @@ TRTModel::TRTModel(
     }); //strides in bytes(like in regular numpy array)
     auto test_buffer = py::array_t<float, py::array::c_style>(shape, strides);
     auto ret = Apply(test_buffer);
-}
-
-TRTModel::~TRTModel(){
-    if(CUDA_FAILED(cudaStreamDestroy(mStream))){
-        spdlog::error("failed to destroy cuda stream");
-    }
 }
 
 py::object TRTModel::Apply(py::array_t<float, py::array::c_style> image)
@@ -102,12 +95,7 @@ py::object TRTModel::Apply(py::array_t<float, py::array::c_style> image)
         inferenceBuffers.push_back(x.memory->device());
     }
 
-    const bool result = context->enqueueV2(
-            inferenceBuffers.data(),
-            mStream,
-            nullptr);
-
-    CUDA(cudaStreamSynchronize(mStream));
+    const bool result = context->executeV2(inferenceBuffers.data());
 
     if(!result)
     {

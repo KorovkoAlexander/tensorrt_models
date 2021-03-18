@@ -9,12 +9,13 @@ else()
     set(CMAKE_CXX_FLAGS "-O3")
 endif (UNIX)
 
-include_directories(/home/akorovko/Downloads/TensorRT-7.1.3.4/include)
+include_directories(/home/akorovko/Downloads/TensorRT-7.2.2.3/include)
 
-set(TensorRT_LIBRARIES /home/akorovko/Downloads/TensorRT-7.1.3.4/lib)
+set(TensorRT_LIBRARIES /home/akorovko/Downloads/TensorRT-7.2.2.3/lib)
 link_directories(${TensorRT_LIBRARIES})
 
-find_package(CUDA REQUIRED)
+set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda-11.1)
+find_package(CUDA REQUIRED 11.1)
 
 if (CUDA_FOUND)
     message("CUDA found")

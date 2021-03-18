@@ -18,7 +18,6 @@ using namespace std;
 
 class TRTModel: public BasicModel {
 private:
-    cudaStream_t  mStream;
     size_t max_batch_size;
 
 public:
@@ -29,7 +28,7 @@ public:
 
     py::object Apply(py::array_t<float, py::array::c_style> image);
 
-    ~TRTModel() override;
+    ~TRTModel() override = default;
 };
 
 #endif //TRTMODEL_H
