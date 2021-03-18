@@ -69,9 +69,9 @@ void fill_profile(IOptimizationProfile* profile, ITensor* layer, int maxBatchSiz
 class Base{
 public:
     virtual ~Base(){
-        if(CUDA_FAILED(cudaDeviceReset())){
-            spdlog::error("failed to reset the device");
-        }
+//        if(CUDA_FAILED(cudaDeviceReset())){
+//            spdlog::error("failed to reset the device");
+//        }
     }
 };
 
